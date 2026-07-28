@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-sdlc-config
+  namespace: homedir-ai-sdlc
+data:
+  AI_SDLC_ENVIRONMENT: production
+  AI_SDLC_LOG_LEVEL: info

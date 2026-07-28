@@ -1,0 +1,9 @@
+.git
+.github
+deploy
+docs
+platform
+*.md
+bin
+dist
+tmp
