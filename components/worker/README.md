@@ -14,3 +14,8 @@ leases remain outside the container; only disposable workspaces are local.
 
 Contents write, pull requests write, checks read and issues read. No Actions,
 deployments or administration write permissions.
+
+## Internal API
+
+`POST /v1/cycles/evaluate` converts an agent attempt into a completed, reprompt
+or human-escalation decision using explicit containment and retry limits.

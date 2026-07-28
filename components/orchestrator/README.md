@@ -17,3 +17,8 @@ coding agents or decide whether release gates passed.
 ## GitHub permissions
 
 Issues read/write and metadata read. Contents and Actions are read-only.
+
+## Internal API
+
+`POST /v1/plans/reconcile` validates a work DAG, propagates failed dependency
+state and returns ready work within the requested concurrency limit.

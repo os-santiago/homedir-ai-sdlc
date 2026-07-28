@@ -19,7 +19,9 @@ type Metadata struct {
 	Produces       []string `json:"produces"`
 }
 
-func Run(metadata Metadata) error {
+type RouteRegistrar func(*http.ServeMux)
+
+func Run(metadata Metadata, registrars ...RouteRegistrar) error {
 	if metadata.Name == "" || metadata.Responsibility == "" {
 		return errors.New("component metadata is incomplete")
 	}
@@ -29,14 +31,19 @@ func Run(metadata Metadata) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
+		WriteJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		WriteJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.HandleFunc("GET /metadata", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, metadata)
+		WriteJSON(w, http.StatusOK, metadata)
 	})
+	for _, register := range registrars {
+		if register != nil {
+			register(mux)
+		}
+	}
 
 	server := &http.Server{
 		Addr:              address,
@@ -63,10 +70,20 @@ func Run(metadata Metadata) error {
 	return nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
+func WriteJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func DecodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return false
+	}
+	return true
 }
 
 func requestLog(logger *slog.Logger, next http.Handler) http.Handler {
