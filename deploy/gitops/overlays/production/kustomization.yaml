@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: homedir-ai-sdlc
+resources:
+  - ../../base
+patches:
+  - path: environment.yaml
+images:
+  - name: ghcr.io/os-santiago/homedir-ai-sdlc-admission-controller
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: ghcr.io/os-santiago/homedir-ai-sdlc-orchestrator
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: ghcr.io/os-santiago/homedir-ai-sdlc-worker
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  - name: ghcr.io/os-santiago/homedir-ai-sdlc-release-manager
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
