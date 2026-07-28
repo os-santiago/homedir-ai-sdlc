@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+bin/
+coverage.out
+dist/
+tmp/
+*.local.yaml
+deploy/gitops/**/secrets.yaml

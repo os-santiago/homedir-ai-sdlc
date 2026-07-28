@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-sdlc-config
+  namespace: homedir-ai-sdlc
+data:
+  AI_SDLC_ENVIRONMENT: base
+  AI_SDLC_LOG_LEVEL: info
+  AI_SDLC_EVENT_BUS_URL: nats://nats:4222
+  AI_SDLC_OTEL_ENDPOINT: http://otel-collector:4317

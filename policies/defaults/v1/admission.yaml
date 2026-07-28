@@ -1,0 +1,23 @@
+apiVersion: ai-sdlc.os-santiago.io/v1
+kind: AdmissionPolicy
+metadata:
+  name: organization-default
+  version: 1.0.0
+spec:
+  required:
+    title: true
+    description: true
+    acceptanceCriteria: true
+    authorizedAdmission: true
+  reject:
+    requestsAdministrativeBypass: true
+    requestsSecretDisclosure: true
+    requestsProtectionWeakening: true
+  escalate:
+    securityBoundaryChange: true
+    legalOrComplianceImpact: true
+    irreversibleDataMigration: true
+    criticalRisk: true
+  decomposition:
+    maximumIndependentOutcomes: 1
+    maximumAcceptanceCriteria: 5
