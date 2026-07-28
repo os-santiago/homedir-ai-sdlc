@@ -1,0 +1,12 @@
+FROM docker.io/library/golang:1.24-alpine AS build
+WORKDIR /src
+COPY go.mod ./
+COPY internal ./internal
+COPY components/release-manager ./components/release-manager
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/component ./components/release-manager/cmd
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/component /component
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/component"]

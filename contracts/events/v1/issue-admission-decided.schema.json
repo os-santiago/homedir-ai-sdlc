@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/os-santiago/homedir-ai-sdlc/contracts/events/v1/issue-admission-decided.schema.json",
+  "title": "IssueAdmissionDecided.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "occurredAt", "correlationId", "repository", "issue", "issueRevision", "decision", "policyVersion"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "correlationId": {"type": "string", "minLength": 1},
+    "repository": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
+    "issue": {"type": "integer", "minimum": 1},
+    "issueRevision": {"type": "string", "minLength": 1},
+    "decision": {"enum": ["accepted", "rejected", "needs-clarification", "needs-human", "requires-decomposition"]},
+    "risk": {"enum": ["low", "medium", "high", "critical"]},
+    "policyVersion": {"type": "string", "minLength": 1},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "requiredGates": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

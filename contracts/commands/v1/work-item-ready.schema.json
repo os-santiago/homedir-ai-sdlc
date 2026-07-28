@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/os-santiago/homedir-ai-sdlc/contracts/commands/v1/work-item-ready.schema.json",
+  "title": "WorkItemReady.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commandId", "idempotencyKey", "correlationId", "planId", "workItemId", "repository", "baseRef", "acceptanceCriteria"],
+  "properties": {
+    "commandId": {"type": "string", "format": "uuid"},
+    "idempotencyKey": {"type": "string", "minLength": 1},
+    "correlationId": {"type": "string", "minLength": 1},
+    "planId": {"type": "string", "format": "uuid"},
+    "workItemId": {"type": "string", "format": "uuid"},
+    "repository": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
+    "baseRef": {"type": "string", "minLength": 1},
+    "issueNumbers": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1, "uniqueItems": true},
+    "acceptanceCriteria": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "requiredGates": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "leaseSeconds": {"type": "integer", "minimum": 60, "maximum": 7200}
+  }
+}

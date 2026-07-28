@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-sdlc-control-plane
+  namespace: homedir-ai-sdlc
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-sdlc-control-plane
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-sdlc-control-plane
+    spec:
+      serviceAccountName: ai-sdlc-runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: admission-controller
+          image: ghcr.io/os-santiago/homedir-ai-sdlc-admission-controller:development
+          envFrom:
+            - configMapRef:
+                name: ai-sdlc-config
+          env:
+            - name: AI_SDLC_HTTP_ADDRESS
+              value: :8081
+          ports:
+            - name: admission
+              containerPort: 8081
+          readinessProbe:
+            httpGet: {path: /readyz, port: admission}
+          livenessProbe:
+            httpGet: {path: /healthz, port: admission}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+        - name: orchestrator
+          image: ghcr.io/os-santiago/homedir-ai-sdlc-orchestrator:development
+          envFrom:
+            - configMapRef: {name: ai-sdlc-config}
+          env:
+            - name: AI_SDLC_HTTP_ADDRESS
+              value: :8082
+          ports:
+            - name: orchestrator
+              containerPort: 8082
+          readinessProbe:
+            httpGet: {path: /readyz, port: orchestrator}
+          livenessProbe:
+            httpGet: {path: /healthz, port: orchestrator}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+        - name: worker
+          image: ghcr.io/os-santiago/homedir-ai-sdlc-worker:development
+          envFrom:
+            - configMapRef: {name: ai-sdlc-config}
+          env:
+            - name: AI_SDLC_HTTP_ADDRESS
+              value: :8083
+          ports:
+            - name: worker
+              containerPort: 8083
+          readinessProbe:
+            httpGet: {path: /readyz, port: worker}
+          livenessProbe:
+            httpGet: {path: /healthz, port: worker}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: workspaces
+              mountPath: /workspaces
+        - name: release-manager
+          image: ghcr.io/os-santiago/homedir-ai-sdlc-release-manager:development
+          envFrom:
+            - configMapRef: {name: ai-sdlc-config}
+          env:
+            - name: AI_SDLC_HTTP_ADDRESS
+              value: :8084
+          ports:
+            - name: release
+              containerPort: 8084
+          readinessProbe:
+            httpGet: {path: /readyz, port: release}
+          livenessProbe:
+            httpGet: {path: /healthz, port: release}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: workspaces
+          emptyDir:
+            sizeLimit: 10Gi
