@@ -18,15 +18,15 @@ type Check struct {
 }
 
 type Snapshot struct {
-	Checks                    []Check  `json:"checks"`
-	ActionableReviewCount     int      `json:"actionableReviewCount"`
-	IssueCoveragePassed       bool     `json:"issueCoveragePassed"`
-	ValidationEvidencePresent bool     `json:"validationEvidencePresent"`
-	RemediationAttempts       int      `json:"remediationAttempts"`
-	MaximumRemediation        int      `json:"maximumRemediation"`
-	Merged                    bool     `json:"merged"`
-	ReleaseStatus             string   `json:"releaseStatus"`
-	ReleaseConclusion         string   `json:"releaseConclusion"`
+	Checks                    []Check `json:"checks"`
+	ActionableReviewCount     int     `json:"actionableReviewCount"`
+	IssueCoveragePassed       bool    `json:"issueCoveragePassed"`
+	ValidationEvidencePresent bool    `json:"validationEvidencePresent"`
+	RemediationAttempts       int     `json:"remediationAttempts"`
+	MaximumRemediation        int     `json:"maximumRemediation"`
+	Merged                    bool    `json:"merged"`
+	ReleaseStatus             string  `json:"releaseStatus"`
+	ReleaseConclusion         string  `json:"releaseConclusion"`
 }
 
 type Result struct {
