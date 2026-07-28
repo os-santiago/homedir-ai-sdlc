@@ -35,7 +35,9 @@ docs/architecture/          architecture decisions and component boundaries
 ```
 
 See [Architecture](docs/architecture/README.md) and
-[GitOps operations](deploy/gitops/README.md) before adding functionality.
+[GitOps operations](deploy/gitops/README.md) before adding functionality. The
+[HomeDir migration map](docs/migration/homedir-worker.md) records what has moved
+from the legacy worker and what still blocks production cutover.
 
 ## Local validation
 

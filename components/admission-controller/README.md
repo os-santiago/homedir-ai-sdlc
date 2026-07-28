@@ -15,6 +15,12 @@ or observes production.
 - Reprocessing the same repository, issue revision and policy version must
   return the same decision.
 
+## Internal API
+
+`POST /v1/admissions/evaluate` evaluates normalized issue data using the
+provided policy or the safe default policy. The endpoint is deterministic and
+does not mutate GitHub.
+
 ## GitHub permissions
 
 Issues read/write and metadata read. No contents, Actions or administration

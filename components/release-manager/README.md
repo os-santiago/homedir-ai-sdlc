@@ -19,3 +19,9 @@ uses an administrative bypass.
 
 Actions, checks, deployments and contents read; pull requests and issues
 read/write. No administration or ruleset write permissions.
+
+## Internal API
+
+`POST /v1/releases/evaluate` evaluates required checks, actionable reviews,
+issue coverage, validation evidence, remediation limits and post-merge release
+status without bypassing repository governance.
