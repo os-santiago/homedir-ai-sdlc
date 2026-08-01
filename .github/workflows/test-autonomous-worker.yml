@@ -75,8 +75,10 @@ jobs:
           echo ""
 
           # Run worker in container as current user (fix permissions)
+          # Set HOME to writable location for git config
           podman run --rm \
             --user $(id -u):$(id -g) \
+            -e HOME=/var/lib/homedir-sdlc \
             --env-file .test/env \
             -v "$(pwd)/.test/state:/var/lib/homedir-sdlc" \
             -v "$(pwd)/.test/worktrees:/srv/homedir-sdlc/worktrees" \
