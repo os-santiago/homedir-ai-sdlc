@@ -45,9 +45,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SC_API_KEY: ${{ secrets.SC_API_KEY }}
         run: |
-          # Fix permissions for container user (UID 1000)
-          chmod -R 777 .test
-
           cat > .test/env << EOF
           HOMEDIR_SDLC_REPO=os-santiago/homedir
           HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc
@@ -77,8 +74,9 @@ jobs:
           echo "=================================================="
           echo ""
 
-          # Run worker in container
+          # Run worker in container as current user (fix permissions)
           podman run --rm \
+            --user $(id -u):$(id -g) \
             --env-file .test/env \
             -v "$(pwd)/.test/state:/var/lib/homedir-sdlc" \
             -v "$(pwd)/.test/worktrees:/srv/homedir-sdlc/worktrees" \
