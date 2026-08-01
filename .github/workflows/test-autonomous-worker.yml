@@ -25,8 +25,9 @@ jobs:
 
       - name: Setup test environment
         run: |
-          mkdir -p .test/state/{issues,prs,run-summaries,autonomous-decisions,logs}
-          mkdir -p .test/worktrees
+          # Create directory structure that worker expects
+          mkdir -p .test/state/{issues,prs,run-summaries,autonomous-decisions}
+          mkdir -p .test/worktrees/homedir
           mkdir -p .test/logs
 
           echo "Test environment created"
