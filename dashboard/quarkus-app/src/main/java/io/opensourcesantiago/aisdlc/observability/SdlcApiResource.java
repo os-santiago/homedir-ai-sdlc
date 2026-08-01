@@ -1,6 +1,6 @@
 package io.opensourcesantiago.aisdlc.observability;
 
-import com.scanales.homedir.util.AdminUtils;
+import io.opensourcesantiago.aisdlc.util.AdminUtils;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
