@@ -9,3 +9,6 @@ dist/
 tmp/
 *.local.yaml
 deploy/gitops/**/secrets.yaml
+
+# Maven build output
+target/
