@@ -12,9 +12,10 @@ on:
     branches:
       - main
     paths:
-      - 'platform/scripts/homedir-sdlc-worker.sh'
-      - 'platform/scripts/split-multi-criteria-issue.sh'
-      - 'platform/scripts/pipeline-orchestrator.sh'
+      - 'platform/scripts/homedir-sdlc-*.sh'
+      - 'platform/scripts/sdlc-*.sh'
+      - 'platform/scripts/policy-*.sh'
+      - 'platform/config/autonomous-decision-policy.yaml'
       - '.github/workflows/deploy-worker.yml'
 
 concurrency:
