@@ -1,0 +1,212 @@
+name: Test Autonomous Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to process autonomously'
+        required: true
+        type: string
+        default: '1306'
+      max_issues:
+        description: 'Max issues to process'
+        required: false
+        type: string
+        default: '1'
+
+jobs:
+  autonomous-test:
+    name: Run Worker Autonomously
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup test environment
+        run: |
+          mkdir -p .test/state/{issues,prs,run-summaries,autonomous-decisions,logs}
+          mkdir -p .test/worktrees
+          mkdir -p .test/logs
+
+          echo "Test environment created"
+          ls -la .test/
+
+      - name: Build worker image
+        run: |
+          echo "Building worker container image..."
+          podman build -f container/Containerfile.worker -t worker:test .
+
+          echo "Image built successfully"
+          podman images | grep worker
+
+      - name: Configure worker environment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SC_API_KEY: ${{ secrets.SC_API_KEY }}
+        run: |
+          cat > .test/env << EOF
+          HOMEDIR_SDLC_REPO=os-santiago/homedir
+          HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc
+          HOMEDIR_SDLC_WORKDIR=/srv/homedir-sdlc/worktrees/homedir
+          HOMEDIR_SDLC_LOGFILE=/var/log/homedir-sdlc/worker.log
+          HOMEDIR_SDLC_MAX_ISSUES_PER_RUN=${{ inputs.max_issues }}
+          HOMEDIR_SDLC_WORKER_VERSION=github-actions-test
+          GH_TOKEN=${GH_TOKEN}
+          SC_API_KEY=${SC_API_KEY}
+          EOF
+
+          echo "Environment configured"
+
+      - name: Run worker (AUTONOMOUS - NO INTERVENTION)
+        id: run_worker
+        continue-on-error: true
+        run: |
+          echo "::notice::Starting autonomous worker test with issue #${{ inputs.issue_number }}"
+          echo "::notice::Worker will process the issue completely without human intervention"
+          echo ""
+          echo "=================================================="
+          echo "  AUTONOMOUS TEST - MONITORING ONLY"
+          echo "=================================================="
+          echo "Issue: #${{ inputs.issue_number }}"
+          echo "Repository: os-santiago/homedir"
+          echo "Max issues: ${{ inputs.max_issues }}"
+          echo "=================================================="
+          echo ""
+
+          # Run worker in container
+          podman run --rm \
+            --env-file .test/env \
+            -v "$(pwd)/.test/state:/var/lib/homedir-sdlc" \
+            -v "$(pwd)/.test/worktrees:/srv/homedir-sdlc/worktrees" \
+            -v "$(pwd)/.test/logs:/var/log/homedir-sdlc" \
+            worker:test reconcile \
+            2>&1 | tee .test/logs/worker-output.log
+
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "worker_exit_code=${EXIT_CODE}" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "Worker completed with exit code: ${EXIT_CODE}"
+
+      - name: Analyze worker output
+        if: always()
+        run: |
+          echo "=================================================="
+          echo "  WORKER OUTPUT ANALYSIS"
+          echo "=================================================="
+
+          if [ -f .test/logs/worker.log ]; then
+            echo "Worker log exists:"
+            tail -50 .test/logs/worker.log
+          else
+            echo "No worker.log found"
+          fi
+
+          echo ""
+          echo "Worker output log:"
+          if [ -f .test/logs/worker-output.log ]; then
+            cat .test/logs/worker-output.log
+          fi
+
+          echo ""
+          echo "State directory contents:"
+          find .test/state -type f 2>/dev/null | head -20 || echo "No state files"
+
+          echo ""
+          if [ -f .test/state/heartbeat.json ]; then
+            echo "Heartbeat:"
+            cat .test/state/heartbeat.json | jq '.' || cat .test/state/heartbeat.json
+          fi
+
+      - name: Check for PR created
+        if: always()
+        id: check_pr
+        run: |
+          # Wait a bit for PR to be created
+          sleep 10
+
+          # Check if a PR was created for this issue
+          PR_NUMBER=$(gh pr list -R os-santiago/homedir \
+            --search "in:title #${{ inputs.issue_number }}" \
+            --json number,title,state \
+            --limit 1 | jq -r '.[0].number // empty')
+
+          if [ -n "$PR_NUMBER" ]; then
+            echo "✅ PR created: #${PR_NUMBER}"
+            echo "pr_created=true" >> $GITHUB_OUTPUT
+            echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+
+            gh pr view ${PR_NUMBER} -R os-santiago/homedir
+          else
+            echo "❌ No PR found for issue #${{ inputs.issue_number }}"
+            echo "pr_created=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload worker logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-logs-issue-${{ inputs.issue_number }}
+          path: |
+            .test/logs/
+            .test/state/
+          retention-days: 30
+
+      - name: Test summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # 🤖 Autonomous Worker Test Results
+
+          ## Test Configuration
+          - **Issue**: #${{ inputs.issue_number }}
+          - **Repository**: os-santiago/homedir
+          - **Worker Exit Code**: ${{ steps.run_worker.outputs.worker_exit_code }}
+
+          ## Results
+
+          ### PR Creation
+          ${{ steps.check_pr.outputs.pr_created == 'true' && '✅' || '❌' }} PR Created: ${{ steps.check_pr.outputs.pr_created == 'true' && format('#{0}', steps.check_pr.outputs.pr_number) || 'No PR found' }}
+
+          ### Worker Phases
+          - Admission Review: ${{ steps.run_worker.outcome }}
+          - Code Generation (SCC): Check logs
+          - PR Creation: ${{ steps.check_pr.outputs.pr_created == 'true' && '✅ Success' || '❌ Failed or Pending' }}
+
+          ## Next Steps
+
+          ${{ steps.check_pr.outputs.pr_created == 'true' && format('
+          **PR created successfully!**
+
+          Monitor the PR:
+          ```bash
+          gh pr view {0} -R os-santiago/homedir
+          gh pr checks {0} -R os-santiago/homedir --watch
+          ```
+          ', steps.check_pr.outputs.pr_number) || '
+          **No PR created - Investigation needed**
+
+          Check the uploaded artifacts for worker logs to diagnose the issue.
+          ' }}
+
+          ## Logs
+
+          Worker logs uploaded as artifact: `worker-logs-issue-${{ inputs.issue_number }}`
+
+          EOF
+
+          echo "=================================================="
+          echo "  AUTONOMOUS TEST COMPLETE"
+          echo "=================================================="
+          echo "Exit code: ${{ steps.run_worker.outputs.worker_exit_code }}"
+          echo "PR created: ${{ steps.check_pr.outputs.pr_created }}"
+          ${{ steps.check_pr.outputs.pr_created == 'true' && format('echo "PR number: {0}"', steps.check_pr.outputs.pr_number) || 'echo "No PR created"' }}
+          echo "=================================================="
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
