@@ -33,7 +33,48 @@ Prototipo de microservicios en [`future-go/`](future-go/) con 4 componentes: adm
 
 ## Quick Start
 
-Ver documentación en [docs/](docs/)
+### Deployment Options
+
+**Option 1: VPS with Systemd** (Recommended for production)
+
+```bash
+# Bootstrap automático (requiere sudo)
+curl -fsSL https://raw.githubusercontent.com/os-santiago/homedir-ai-sdlc/main/platform/scripts/homedir-sdlc-bootstrap.sh | sudo bash
+
+# O bootstrap sin sudo (user-owned)
+curl -fsSL https://raw.githubusercontent.com/os-santiago/homedir-ai-sdlc/main/platform/scripts/homedir-sdlc-user-bootstrap.sh | bash
+```
+
+See complete guide: [docs/deployment/vps-systemd.md](docs/deployment/vps-systemd.md)
+
+**Option 2: Container (Podman/Docker)**
+
+```bash
+# Build
+podman build -f container/Containerfile.worker -t homedir-ai-sdlc:latest .
+
+# Run
+podman run -d \
+  --name ai-sdlc-worker \
+  -e GH_TOKEN=${GH_TOKEN} \
+  -e HOMEDIR_SDLC_REPO=os-santiago/homedir \
+  -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
+  -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
+  homedir-ai-sdlc:latest
+```
+
+**Option 3: GitHub Actions Auto-Deploy**
+
+Configure secrets and push to main triggers automatic deployment.  
+See: [docs/deployment/github-actions-secrets.md](docs/deployment/github-actions-secrets.md)
+
+### Dashboard Development
+
+```bash
+cd dashboard/quarkus-app
+./mvnw quarkus:dev
+# Access: http://localhost:8081/sdlc/dashboard/
+```
 
 ## Historia
 
