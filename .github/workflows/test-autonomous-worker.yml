@@ -45,6 +45,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SC_API_KEY: ${{ secrets.SC_API_KEY }}
         run: |
+          # Fix permissions for container user (UID 1000)
+          chmod -R 777 .test
+
           cat > .test/env << EOF
           HOMEDIR_SDLC_REPO=os-santiago/homedir
           HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc
