@@ -84,11 +84,36 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --help
 
-      - name: Push image to registry
+      - name: Push image to GitHub Container Registry
         if: github.event_name != 'pull_request'
         run: |
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           podman push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Log in to Quay.io
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.QUAY_TOKEN }}" | podman login quay.io -u "${{ secrets.QUAY_USERNAME }}" --password-stdin
+
+      - name: Tag and push to Quay.io
+        if: github.event_name != 'pull_request'
+        run: |
+          QUAY_IMAGE="quay.io/opensourcesantiago/homedir-ai-sdlc"
+
+          # Tag for Quay.io
+          podman tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ${QUAY_IMAGE}:latest
+          podman tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${QUAY_IMAGE}:${{ github.sha }}
+
+          # Also tag with date
+          DATE_TAG=$(date -u +'%Y-%m-%d')
+          podman tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ${QUAY_IMAGE}:${DATE_TAG}
+
+          # Push all tags
+          podman push ${QUAY_IMAGE}:latest
+          podman push ${QUAY_IMAGE}:${{ github.sha }}
+          podman push ${QUAY_IMAGE}:${DATE_TAG}
+
+          echo "::notice title=Quay.io Image Published::Image available at ${QUAY_IMAGE}:latest"
 
       - name: Image digest
         run: podman images --digests | grep ${{ env.IMAGE_NAME }}
