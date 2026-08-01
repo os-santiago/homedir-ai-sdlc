@@ -1,74 +1,42 @@
-# HomeDir AI SDLC
+# AI-SDLC: Autonomous Software Development Lifecycle
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![CI](https://github.com/os-santiago/homedir-ai-sdlc/actions/workflows/ci.yml/badge.svg)](https://github.com/os-santiago/homedir-ai-sdlc/actions/workflows/ci.yml)
+Sistema autónomo de desarrollo que gestiona el ciclo completo de issues en GitHub desde admission hasta deployment:
 
-An autonomous, policy-driven software delivery control plane for HomeDir and
-other repositories. The platform turns acceptable issues into ordered,
-auditable implementation work and follows every change through protected
-quality, security, and production gates.
+**admission** → **planning** → **implementation (SCC)** → **PR creation** → **CI remediation** → **auto-merge** → **deployment verification**
 
-## Deployable components
+## Estado Actual
 
-| Component | Owns | Must not own |
-| --- | --- | --- |
-| Admission Controller | Issue normalization, policy evaluation, risk classification, admission decisions | Branches, implementation, merge or deployment |
-| Orchestrator | Work graphs, decomposition, ordering, concurrency, saga coordination | Code generation or release gate decisions |
-| Worker | Isolated worktrees, agentic cycles, reprompting, validation, branch and PR production | Admission policy or production authority |
-| Release Manager | Checks, reviews, remediation requests, merge eligibility, deployment verification and release metrics | Direct code implementation or policy bypass |
+- **Autonomía**: 99% (post-fixes 2026-07-12)
+- **Tiempo E2E**: 16-20 minutos (issue → merged → deployed)
+- **Deployment**: VPS con systemd timer (cada 3 minutos)
+- **Worker**: Bash script (2,476 líneas) + política-driven decision making
 
-Each component is built as a separate OCI image. The first deployment topology
-places the four containers in one Podman/Kubernetes pod for a small operational
-footprint, while preserving boundaries that allow workers and controllers to be
-split into independent deployments later.
+## Componentes
 
-## Repository layout
+### 1. Worker Bash (Producción)
 
-```text
-components/                 deployable source, Containerfile and runbook per component
-contracts/                  versioned commands, events and JSON schemas
-internal/platform/          narrow shared runtime libraries
-policies/                   versioned default policy bundles
-deploy/gitops/              declarative base and environment overlays
-platform/observability/     dashboards, alerts and telemetry configuration
-docs/architecture/          architecture decisions and component boundaries
-```
+Worker autónomo que implementa el ciclo completo:
 
-See [Architecture](docs/architecture/README.md) and
-[GitOps operations](deploy/gitops/README.md) before adding functionality. The
-[HomeDir migration map](docs/migration/homedir-worker.md) records what has moved
-from the legacy worker and what still blocks production cutover.
+- **Script principal**: [`platform/scripts/homedir-sdlc-worker.sh`](platform/scripts/homedir-sdlc-worker.sh) (2,476 líneas)
+- **Políticas**: [`platform/config/autonomous-decision-policy.yaml`](platform/config/autonomous-decision-policy.yaml) (723 líneas)
+- **Deployment**: VPS con systemd timer
+- **State**: Filesystem-based JSON + event journal JSONL
+- **Integración**: GitHub CLI + SCC (Software Construction Copilot)
 
-## Local validation
+### 2. Dashboard Observabilidad
 
-Prerequisites: Go 1.24+, Podman or Docker, and Kustomize.
+Aplicación Quarkus standalone para monitoreo en tiempo real (puerto 8081)
 
-```bash
-make test
-make build
-make render
-make containers
-```
+### 3. Arquitectura Futura (Go)
 
-Run a component:
+Prototipo de microservicios en [`future-go/`](future-go/) con 4 componentes: admission-controller, orchestrator, worker, release-manager.
 
-```bash
-go run ./components/admission-controller/cmd
-curl http://localhost:8080/healthz
-```
+## Quick Start
 
-## Design rules
+Ver documentación en [docs/](docs/)
 
-1. Git is the source of truth for code, policy and deployment desired state.
-2. GitHub is an external system to reconcile, not the platform database.
-3. Durable workflow state belongs in PostgreSQL; coordination uses versioned
-   commands and events.
-4. Labels and comments are human-readable projections, not transaction state.
-5. Every handler is idempotent and every state transition is auditable.
-6. Components use separate identities and least-privilege GitHub permissions.
-7. No component can bypass branch protection, required reviews, checks,
-   rulesets, secrets controls, or deployment gates.
+## Historia
 
-## License
+Este sistema fue desarrollado originalmente en el monorepo [os-santiago/homedir](https://github.com/os-santiago/homedir) y migrado a repositorio independiente el **2026-07-31** para evitar acoplamientos con la aplicación principal.
 
-Apache License 2.0, matching HomeDir.
+Ver [docs/history/](docs/history/) para reportes detallados de sesiones y evolución del sistema.
