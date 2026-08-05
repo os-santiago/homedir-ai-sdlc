@@ -60,13 +60,13 @@ RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
     echo "WARN: SCC download failed, will need to be provided at runtime"
 
 # ============================================================================
-# Worker User (rootless)
+# Rootless Compatibility
 # ============================================================================
-# Create non-root user for worker execution
-# Ubuntu 24.04 allocates UID 1000 to default 'ubuntu' user; remove it first
-RUN userdel -r ubuntu 2>/dev/null; useradd -m -s /bin/bash -u 1000 homedir-sdlc && \
-    mkdir -p /var/lib/homedir-sdlc /srv/homedir-sdlc/worktrees /var/log/homedir-sdlc && \
-    chown -R homedir-sdlc:homedir-sdlc /var/lib/homedir-sdlc /srv/homedir-sdlc /var/log/homedir-sdlc
+# IMPORTANT: Do NOT create specific user or use USER directive
+# Container must run with --user $(id -u):$(id -g) at runtime
+# Create state directories with world-writable permissions for any UID
+RUN mkdir -p /var/lib/homedir-sdlc /srv/homedir-sdlc/worktrees /var/log/homedir-sdlc && \
+    chmod -R 777 /var/lib/homedir-sdlc /srv/homedir-sdlc /var/log/homedir-sdlc
 
 # ============================================================================
 # Platform Code
@@ -74,7 +74,7 @@ RUN userdel -r ubuntu 2>/dev/null; useradd -m -s /bin/bash -u 1000 homedir-sdlc 
 WORKDIR /app
 
 # Copy platform scripts and configs
-COPY --chown=homedir-sdlc:homedir-sdlc platform/ /app/
+COPY platform/ /app/
 
 # Make scripts executable
 RUN chmod +x /app/scripts/*.sh
@@ -82,13 +82,17 @@ RUN chmod +x /app/scripts/*.sh
 # ============================================================================
 # Container Entrypoint
 # ============================================================================
-COPY --chown=homedir-sdlc:homedir-sdlc container/worker-entrypoint.sh /app/
+COPY container/worker-entrypoint.sh /app/
 RUN chmod +x /app/worker-entrypoint.sh
+
+# Make /app readable/executable by any UID (rootless compatibility)
+RUN chmod -R 755 /app
 
 # ============================================================================
 # Runtime Configuration
 # ============================================================================
-USER homedir-sdlc
+# NO USER directive - container will run with --user at runtime
+# This allows dynamic UID matching for CI/CD environments
 
 # Environment defaults (override at runtime)
 ENV PLATFORM_DIR=/app
