@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-SDLC Events Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI-SDLC Events Dashboard</h1>
+            <div class="header-stats">
+                <span id="connection-status" class="status-badge disconnected">Disconnected</span>
+                <span id="last-update">Last update: Never</span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <!-- Stage Statistics -->
+            <section class="card full-width">
+                <h2>Pipeline Stages</h2>
+                <div id="stage-stats" class="stats-grid">
+                    <div class="loading">Loading statistics...</div>
+                </div>
+            </section>
+
+            <!-- Active Issues -->
+            <section class="card">
+                <h2>Active Issues <span id="active-count" class="badge">0</span></h2>
+                <div id="active-issues" class="list">
+                    <div class="loading">Loading active issues...</div>
+                </div>
+            </section>
+
+            <!-- Recent Events -->
+            <section class="card">
+                <h2>Recent Events <span id="events-count" class="badge">0</span></h2>
+                <div id="recent-events" class="list">
+                    <div class="loading">Loading events...</div>
+                </div>
+            </section>
+
+            <!-- Metrics -->
+            <section class="card full-width">
+                <h2>Metrics</h2>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Total Events</div>
+                        <div id="total-events" class="metric-value">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Completed</div>
+                        <div id="completed-events" class="metric-value">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Failed</div>
+                        <div id="failed-events" class="metric-value error">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Success Rate</div>
+                        <div id="success-rate" class="metric-value">-</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
