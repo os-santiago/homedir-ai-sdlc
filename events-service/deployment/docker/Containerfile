@@ -1,0 +1,53 @@
+# Production-ready multi-stage build
+# NO dev mode, NO hot-reload, PRODUCTION ONLY
+
+# Stage 1: Build with production profile
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+
+WORKDIR /build
+
+# Copy Maven files
+COPY pom.xml ./
+COPY .mvn .mvn
+
+# Download dependencies
+RUN mvn dependency:go-offline -B || true
+
+# Copy source
+COPY src ./src
+
+# Build for PRODUCTION - explicitly disable dev mode
+RUN mvn clean package -DskipTests \
+    -Dquarkus.package.type=fast-jar \
+    -Dquarkus.profile=prod \
+    -Dmaven.test.skip=true \
+    -B
+
+# Stage 2: Production runtime
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /deployments
+
+# Install curl for health checks only
+RUN apk add --no-cache curl
+
+# Copy production artifacts
+COPY --from=build /build/target/quarkus-app/lib/ ./lib/
+COPY --from=build /build/target/quarkus-app/*.jar ./
+COPY --from=build /build/target/quarkus-app/app/ ./app/
+COPY --from=build /build/target/quarkus-app/quarkus/ ./quarkus/
+
+# Production environment - FORCE prod mode
+ENV QUARKUS_PROFILE=prod
+ENV QUARKUS_LAUNCH_DEVMODE=false
+ENV JAVA_OPTS="-Dquarkus.profile=prod -Dquarkus.live-reload.enabled=false"
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8080/q/health/live || exit 1
+
+# Run in production mode
+ENTRYPOINT ["java", "-Dquarkus.profile=prod", "-Dquarkus.http.host=0.0.0.0", "-jar", "quarkus-run.jar"]

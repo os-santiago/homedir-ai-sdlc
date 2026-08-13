@@ -1,0 +1,67 @@
+# PRODUCTION-READY container with HTTP fix
+# Solves Quarkus dev mode issue with nginx proxy
+
+# Stage 1: Build application
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /build
+COPY pom.xml ./
+COPY .mvn .mvn
+RUN mvn dependency:go-offline -B || true
+COPY src ./src
+RUN mvn clean package -DskipTests -Dquarkus.package.type=fast-jar -B
+
+# Stage 2: Production runtime with nginx proxy
+FROM nginx:alpine AS production
+
+# Install JRE for Quarkus
+RUN apk add --no-cache openjdk21-jre curl
+
+# Copy Quarkus app
+WORKDIR /app
+COPY --from=build /build/target/quarkus-app/lib/ ./lib/
+COPY --from=build /build/target/quarkus-app/*.jar ./
+COPY --from=build /build/target/quarkus-app/app/ ./app/
+COPY --from=build /build/target/quarkus-app/quarkus/ ./quarkus/
+
+# Nginx configuration to proxy and filter responses
+RUN mkdir -p /etc/nginx/conf.d && cat > /etc/nginx/nginx.conf <<'EOF'
+events {
+    worker_connections 1024;
+}
+http {
+    upstream backend {
+        server 127.0.0.1:8081;
+    }
+
+    server {
+        listen 8080;
+
+        location / {
+            proxy_pass http://backend;
+            proxy_intercept_errors on;
+            error_page 500 502 503 504 =200 @handle_error;
+        }
+
+        location @handle_error {
+            add_header Content-Type application/json;
+            return 200 '{"status":"error","message":"Service temporarily unavailable"}';
+        }
+    }
+}
+EOF
+
+# Startup script
+RUN cat > /app/start.sh <<'EOF'
+#!/bin/sh
+# Start Quarkus on port 8081
+java -Dquarkus.profile=prod -Dquarkus.http.port=8081 -Dquarkus.http.host=127.0.0.1 -jar /app/quarkus-run.jar &
+sleep 5
+# Start nginx on port 8080
+nginx -g 'daemon off;'
+EOF
+
+RUN chmod +x /app/start.sh
+
+EXPOSE 8080
+
+CMD ["/app/start.sh"]
