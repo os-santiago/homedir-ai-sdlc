@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # NATS Message Broker
+  nats:
+    image: nats:2.10-alpine
+    container_name: ai-sdlc-nats
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP monitoring
+      - "6222:6222"  # Cluster routes
+    command:
+      - "--http_port=8222"
+      - "--jetstream"
+      - "--store_dir=/data"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-sdlc-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-sdlc-postgres-eventbus
+    environment:
+      POSTGRES_DB: aisdlc
+      POSTGRES_USER: aisdlc
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aisdlc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-sdlc-network
+    restart: unless-stopped
+
+  # AI-SDLC Events Service (with Event Bus)
+  ai-sdlc-events:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: ai-sdlc-events-eventbus
+    environment:
+      QUARKUS_PROFILE: eventbus
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: aisdlc
+      DB_USERNAME: aisdlc
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      NATS_HOST: nats
+      NATS_PORT: 4222
+      JAVA_OPTS: "-Xmx512m -Xms256m"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ai-sdlc-network
+    restart: unless-stopped
+
+  # Example External Consumer
+  event-consumer-example:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: ai-sdlc-consumer-example
+    environment:
+      QUARKUS_PROFILE: eventbus
+      NATS_HOST: nats
+      NATS_PORT: 4222
+      # Only run consumer, not full service
+      CONSUMER_ONLY: "true"
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - ai-sdlc-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  nats_data:
+    driver: local
+
+networks:
+  ai-sdlc-network:
+    driver: bridge
