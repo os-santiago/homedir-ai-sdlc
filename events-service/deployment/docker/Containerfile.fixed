@@ -45,13 +45,14 @@ server {
 EOF
 
 # Configurar supervisord para correr ambos servicios
+# Usa variables de entorno para HTTP_HOST y HTTP_PORT
 RUN cat > /etc/supervisord.conf <<'EOF'
 [supervisord]
 nodaemon=true
 user=root
 
 [program:quarkus]
-command=java -Dquarkus.profile=prod -Dquarkus.http.port=8081 -Dquarkus.http.host=127.0.0.1 -jar /app/quarkus-run.jar
+command=java -Dquarkus.profile=prod -jar /app/quarkus-run.jar
 autostart=true
 autorestart=true
 stdout_logfile=/dev/stdout
