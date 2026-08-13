@@ -2,7 +2,7 @@
 # Resuelve el issue de Quarkus dev mode en HTTP responses
 
 # Stage 1: Build application
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+FROM docker.io/library/maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /build
 COPY pom.xml ./
 COPY .mvn .mvn
@@ -11,7 +11,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests -Dquarkus.package.type=fast-jar -B
 
 # Stage 2: Runtime con nginx proxy
-FROM eclipse-temurin:21-jre-alpine
+FROM docker.io/library/eclipse-temurin:21-jre-alpine
 
 # Instalar nginx y supervisord
 RUN apk add --no-cache nginx supervisor curl
