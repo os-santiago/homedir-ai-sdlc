@@ -2116,7 +2116,14 @@ run_issue() {
   issue_comments="$(gh issue view "${number}" --repo "${REPO}" --json comments --jq '.comments[-5:] | map("- [" + (.author.login // "unknown") + " at " + .createdAt + "] " + .body) | join("\n")' 2>>"${LOGFILE}" || true)"
 
   prompt="$(cat <<EOF
-Implement GitHub issue #${number} in ${REPO}.
+Resolve GitHub issue #${number} by making the required code changes NOW.
+
+CRITICAL INSTRUCTIONS FOR BATCH MODE:
+- YOU MUST execute Edit/Write/Bash tools to make actual file changes
+- DO NOT just describe what to do - EXECUTE the changes immediately
+- Read relevant files first with Read tool, then modify them with Edit/Write
+- Ensure all acceptance criteria are met with real code changes
+- Work is complete only when files are modified and changes are committed
 
 Issue title:
 ${title}
@@ -2124,8 +2131,10 @@ ${title}
 Issue URL:
 ${url}
 
-Issue body:
+Issue description:
 ${body}
+
+Execute the implementation immediately using available tools (Read, Edit, Write, Bash).
 EOF
 )"
 
