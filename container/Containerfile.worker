@@ -48,16 +48,25 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
     apt-get install -y gh && \
     rm -rf /var/lib/apt/lists/*
 
+# Configure gh to use environment token authentication
+# This allows GH_TOKEN to work without explicit gh auth login
+RUN mkdir -p /etc/skel/.config/gh && \
+    echo 'git_protocol: https' > /etc/skel/.config/gh/config.yml && \
+    echo 'prompt: disabled' >> /etc/skel/.config/gh/config.yml && \
+    chmod -R 755 /etc/skel/.config
+
 # ============================================================================
-# SCC (Software Construction Copilot)
+# SCC (Sourcegraph Code Copilot / Claude Code)
 # ============================================================================
-# Install SCC from releases
-ARG SCC_VERSION=latest
+# Install SCC from Claude Code releases
+ARG SCC_VERSION=0.4.2
 RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
-    curl -L "https://github.com/anthropics/scc/releases/latest/download/scc-linux-${ARCH}" \
+    echo "Downloading SCC for ${ARCH}..." && \
+    curl -fsSL "https://github.com/anthropics/claude-code/releases/download/v${SCC_VERSION}/scc-linux-${ARCH}" \
     -o /usr/local/bin/scc && \
-    chmod +x /usr/local/bin/scc || \
-    echo "WARN: SCC download failed, will need to be provided at runtime"
+    chmod +x /usr/local/bin/scc && \
+    /usr/local/bin/scc --version || \
+    (echo "ERROR: SCC installation failed" && exit 1)
 
 # ============================================================================
 # Rootless Compatibility
