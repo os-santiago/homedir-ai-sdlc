@@ -71,12 +71,24 @@ log "INFO: Configuring GitHub CLI..."
 # No need to call gh auth login - it would fail with "already using GH_TOKEN"
 log "INFO: Using GH_TOKEN for authentication (automatic)"
 
-# Verify authentication
-if ! gh auth status >/dev/null 2>&1; then
-  log "WARN: GitHub CLI authentication verification failed - will attempt to continue"
-  log "WARN: This may cause failures when interacting with GitHub"
+# Create gh config directory if needed
+mkdir -p ~/.config/gh
+if [ ! -f ~/.config/gh/config.yml ]; then
+  cat > ~/.config/gh/config.yml <<EOF
+git_protocol: https
+prompt: disabled
+EOF
+fi
+
+# Verify authentication with actual API test instead of gh auth status
+# gh auth status can fail even when GH_TOKEN works fine
+log "INFO: Verifying GitHub API access..."
+if gh api user --silent 2>/dev/null; then
+  log "INFO: GitHub API access verified successfully"
 else
-  log "INFO: GitHub CLI authenticated successfully"
+  log "ERROR: GitHub API access failed - check GH_TOKEN validity"
+  log "ERROR: Repository: ${HOMEDIR_SDLC_REPO}"
+  exit 1
 fi
 
 # ============================================================================
