@@ -1,0 +1,8 @@
+[INFO] Loading policies from: /d/git/homedir-ai-sdlc/platform/config/autonomous-decision-policy.yaml
+/d/git/homedir-ai-sdlc/platform/scripts/policy-loader.sh: line 54: _load_policies_fallback: command not found
+[WARN] Running without policy system
+mkdir: cannot create directory ‘/var’: Permission denied
+mkdir: cannot create directory ‘/var’: Permission denied
+mkdir: cannot create directory ‘/var’: Permission denied
+mkdir: cannot create directory ‘/var’: Permission denied
+mkdir: cannot create directory ‘/var’: Permission denied

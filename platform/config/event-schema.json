@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI-SDLC Event Schema",
+  "description": "Schema for AI-SDLC lifecycle events with full traceability",
+  "type": "object",
+  "required": [
+    "event_id",
+    "tracking_id",
+    "action_id",
+    "event_type",
+    "timestamp",
+    "issue_number",
+    "status",
+    "metadata"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^evt_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "description": "Unique event identifier (UUID v4)"
+    },
+    "tracking_id": {
+      "type": "string",
+      "pattern": "^track_[0-9]+_[0-9]{14}$",
+      "description": "Issue lifecycle tracking ID (track_<issue_number>_<timestamp>)"
+    },
+    "action_id": {
+      "type": "string",
+      "pattern": "^act_[a-z_]+_[0-9]{14}$",
+      "description": "Specific action identifier (act_<action_type>_<timestamp>)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "issue.detected",
+        "issue.claimed",
+        "admission.started",
+        "admission.completed",
+        "implementation.started",
+        "implementation.completed",
+        "pr.created",
+        "pr.updated",
+        "pr.merged",
+        "ci.check.started",
+        "ci.check.failed",
+        "ci.check.passed",
+        "remediation.started",
+        "remediation.completed",
+        "deployment.started",
+        "deployment.completed",
+        "error.occurred",
+        "worker.heartbeat"
+      ],
+      "description": "Type of event"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp with timezone"
+    },
+    "issue_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "GitHub issue number"
+    },
+    "pr_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "GitHub PR number (if applicable)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "failed",
+        "skipped"
+      ],
+      "description": "Current status of the action"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "detection",
+        "admission",
+        "implementation",
+        "pr_management",
+        "ci_checks",
+        "remediation",
+        "deployment"
+      ],
+      "description": "Pipeline stage"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional event-specific metadata",
+      "properties": {
+        "worker_version": {"type": "string"},
+        "repository": {"type": "string"},
+        "duration_ms": {"type": "integer"},
+        "error_message": {"type": "string"},
+        "decision": {"type": "string"},
+        "reason": {"type": "string"},
+        "commit_sha": {"type": "string"},
+        "pr_url": {"type": "string"},
+        "check_name": {"type": "string"},
+        "files_changed": {"type": "integer"},
+        "lines_added": {"type": "integer"},
+        "lines_removed": {"type": "integer"}
+      },
+      "additionalProperties": true
+    },
+    "parent_event_id": {
+      "type": "string",
+      "pattern": "^evt_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "description": "Parent event ID for causality chain"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "ID to correlate related events across systems"
+    }
+  }
+}
