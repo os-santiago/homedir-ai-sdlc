@@ -166,79 +166,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create deployment script
-        run: |
-          cat > deploy.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          echo "=== AI-SDLC Production Deployment ==="
-          echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
-          echo "Commit: $GITHUB_SHA"
-          echo ""
-
-          # Pull latest images
-          echo "Pulling worker image..."
-          podman pull ${{ env.IMAGE_WORKER }}:latest
-
-          echo "Pulling dashboard image..."
-          podman pull ${{ env.IMAGE_DASHBOARD }}:latest
-
-          # Stop existing pod
-          echo "Stopping existing AI-SDLC pod..."
-          podman pod stop ai-sdlc 2>/dev/null || true
-          podman pod rm ai-sdlc 2>/dev/null || true
-
-          # Create new pod
-          echo "Creating new pod..."
-          podman pod create \
-            --name ai-sdlc \
-            -p 8081:8080
-
-          # Start worker container
-          echo "Starting worker container..."
-          podman run -d \
-            --pod ai-sdlc \
-            --name ai-sdlc-worker \
-            --restart unless-stopped \
-            --env-file /etc/homedir-sdlc/worker.env \
-            -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
-            -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
-            ${{ env.IMAGE_WORKER }}:latest
-
-          # Start dashboard container
-          echo "Starting dashboard container..."
-          podman run -d \
-            --pod ai-sdlc \
-            --name ai-sdlc-dashboard \
-            --restart unless-stopped \
-            -e HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc \
-            -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc:ro \
-            ${{ env.IMAGE_DASHBOARD }}:latest
-
-          # Wait for containers to be healthy
-          echo ""
-          echo "Waiting for containers to be healthy..."
-          sleep 30
-
-          # Check health
-          echo "Worker status: $(podman inspect ai-sdlc-worker --format='{{.State.Status}}')"
-          echo "Dashboard status: $(podman inspect ai-sdlc-dashboard --format='{{.State.Status}}')"
-
-          # Verify heartbeat
-          if [ -f /var/lib/homedir-sdlc/heartbeat.json ]; then
-            echo ""
-            echo "Worker heartbeat:"
-            cat /var/lib/homedir-sdlc/heartbeat.json | jq '.'
-          fi
-
-          echo ""
-          echo "✅ Deployment complete!"
-          echo "Dashboard: https://homedir-ai-sdlc.opensourcesantiago.io"
-          EOF
-
-          chmod +x deploy.sh
-
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -251,16 +178,71 @@ jobs:
           envs: GITHUB_SHA
           script_stop: true
           script: |
-            # Upload and execute deployment script
-            cat > /tmp/deploy-ai-sdlc.sh << 'DEPLOYEOF'
-            $(cat deploy.sh)
-            DEPLOYEOF
+            set -e
 
-            chmod +x /tmp/deploy-ai-sdlc.sh
-            bash /tmp/deploy-ai-sdlc.sh
+            echo "=== AI-SDLC Production Deployment ==="
+            echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+            echo "Commit: $GITHUB_SHA"
+            echo ""
 
-            # Cleanup
-            rm /tmp/deploy-ai-sdlc.sh
+            # Pull latest images
+            echo "Pulling worker image..."
+            podman pull ${{ env.IMAGE_WORKER }}:latest
+
+            echo "Pulling dashboard image..."
+            podman pull ${{ env.IMAGE_DASHBOARD }}:latest
+
+            # Stop existing pod
+            echo "Stopping existing AI-SDLC pod..."
+            podman pod stop ai-sdlc 2>/dev/null || true
+            podman pod rm ai-sdlc 2>/dev/null || true
+
+            # Create new pod
+            echo "Creating new pod..."
+            podman pod create \
+              --name ai-sdlc \
+              -p 8081:8080
+
+            # Start worker container
+            echo "Starting worker container..."
+            podman run -d \
+              --pod ai-sdlc \
+              --name ai-sdlc-worker \
+              --restart unless-stopped \
+              --env-file /etc/homedir-sdlc/worker.env \
+              -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
+              -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
+              ${{ env.IMAGE_WORKER }}:latest
+
+            # Start dashboard container
+            echo "Starting dashboard container..."
+            podman run -d \
+              --pod ai-sdlc \
+              --name ai-sdlc-dashboard \
+              --restart unless-stopped \
+              -e HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc \
+              -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc:ro \
+              ${{ env.IMAGE_DASHBOARD }}:latest
+
+            # Wait for containers to be healthy
+            echo ""
+            echo "Waiting for containers to be healthy..."
+            sleep 30
+
+            # Check health
+            echo "Worker status: $(podman inspect ai-sdlc-worker --format='{{.State.Status}}')"
+            echo "Dashboard status: $(podman inspect ai-sdlc-dashboard --format='{{.State.Status}}')"
+
+            # Verify heartbeat
+            if [ -f /var/lib/homedir-sdlc/heartbeat.json ]; then
+              echo ""
+              echo "Worker heartbeat:"
+              cat /var/lib/homedir-sdlc/heartbeat.json | jq '.'
+            fi
+
+            echo ""
+            echo "Deployment complete!"
+            echo "Dashboard: https://homedir-ai-sdlc.opensourcesantiago.io"
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.3
