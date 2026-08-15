@@ -8,8 +8,9 @@ Sistema autónomo de desarrollo que gestiona el ciclo completo de issues en GitH
 
 - **Autonomía**: 99% (post-fixes 2026-07-12)
 - **Tiempo E2E**: 16-20 minutos (issue → merged → deployed)
-- **Deployment**: VPS con systemd timer (cada 3 minutos)
+- **Deployment**: ✅ **Fully Containerized** (Podman) + CI/CD automático
 - **Worker**: Bash script (2,476 líneas) + política-driven decision making
+- **CI/CD**: Push to main → Build containers → Deploy to production (zero manual steps)
 
 ## Componentes
 
@@ -33,40 +34,62 @@ Prototipo de microservicios en [`future-go/`](future-go/) con 4 componentes: adm
 
 ## Quick Start
 
-### Deployment Options
+### 🚀 Production Deployment (Recommended)
 
-**Option 1: VPS with Systemd** (Recommended for production)
+**Fully automated containerized deployment via CI/CD:**
+
+```bash
+# 1. One-time VPS setup (run as root)
+curl -fsSL https://raw.githubusercontent.com/os-santiago/homedir-ai-sdlc/main/scripts/vps-initial-setup.sh | bash
+
+# 2. Configure secrets in /etc/homedir-sdlc/worker.env
+
+# 3. Deploy: Push to main branch
+git push origin main
+# → Automatic build → Push to ghcr.io → Deploy to VPS
+```
+
+**Key benefits:**
+- ✅ Immutable deployments (Git commit = Container version)
+- ✅ Instant rollback (pull previous image)
+- ✅ Zero manual steps after initial setup
+- ✅ All dependencies bundled in container
+
+See complete guide: **[docs/deployment/containerized-deployment.md](docs/deployment/containerized-deployment.md)**
+
+### 🧪 Local Development
+
+```bash
+# Build containers locally
+podman build -f container/Containerfile.worker -t ai-sdlc-worker:dev .
+
+# Run worker container
+podman run --rm \
+  -e GH_TOKEN=your_token \
+  -e HOMEDIR_SDLC_REPO=os-santiago/homedir \
+  -v $(pwd)/state:/var/lib/homedir-sdlc \
+  ai-sdlc-worker:dev
+
+# Run dashboard
+cd dashboard/quarkus-app
+./mvnw quarkus:dev
+# Access: http://localhost:8081
+```
+
+### 📜 Legacy Deployment (Systemd)
+
+**Note:** This method is deprecated. Use containerized deployment above.
+
+<details>
+<summary>Click to see legacy systemd deployment</summary>
 
 ```bash
 # Bootstrap automático (requiere sudo)
 curl -fsSL https://raw.githubusercontent.com/os-santiago/homedir-ai-sdlc/main/platform/scripts/homedir-sdlc-bootstrap.sh | sudo bash
-
-# O bootstrap sin sudo (user-owned)
-curl -fsSL https://raw.githubusercontent.com/os-santiago/homedir-ai-sdlc/main/platform/scripts/homedir-sdlc-user-bootstrap.sh | bash
 ```
 
-See complete guide: [docs/deployment/vps-systemd.md](docs/deployment/vps-systemd.md)
-
-**Option 2: Container (Podman/Docker)**
-
-```bash
-# Build
-podman build -f container/Containerfile.worker -t homedir-ai-sdlc:latest .
-
-# Run
-podman run -d \
-  --name ai-sdlc-worker \
-  -e GH_TOKEN=${GH_TOKEN} \
-  -e HOMEDIR_SDLC_REPO=os-santiago/homedir \
-  -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
-  -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
-  homedir-ai-sdlc:latest
-```
-
-**Option 3: GitHub Actions Auto-Deploy**
-
-Configure secrets and push to main triggers automatic deployment.  
-See: [docs/deployment/github-actions-secrets.md](docs/deployment/github-actions-secrets.md)
+See: [docs/deployment/vps-systemd.md](docs/deployment/vps-systemd.md) (deprecated)
+</details>
 
 ### Dashboard Development
 
