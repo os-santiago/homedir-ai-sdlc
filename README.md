@@ -39,14 +39,21 @@ Prototipo de microservicios en [`future-go/`](future-go/) con 4 componentes: adm
 **Fully automated containerized deployment via CI/CD:**
 
 ```bash
-# 1. One-time VPS setup (run as root)
+# 1. Configure GitHub Secrets (one-time)
+# Go to: Settings → Secrets → Actions
+# Add: VPS_HOST, VPS_USER, VPS_SSH_KEY
+# See: docs/deployment/github-secrets-setup.md
+
+# 2. One-time VPS setup (run as root on VPS)
 curl -fsSL https://raw.githubusercontent.com/os-santiago/homedir-ai-sdlc/main/scripts/vps-initial-setup.sh | bash
 
-# 2. Configure secrets in /etc/homedir-sdlc/worker.env
+# 3. Configure worker secrets in VPS
+vim /etc/homedir-sdlc/worker.env
+# Add: GH_TOKEN, SC_API_KEY
 
-# 3. Deploy: Push to main branch
+# 4. Deploy: Push to main branch
 git push origin main
-# → Automatic build → Push to ghcr.io → Deploy to VPS
+# → Automatic build → Push to ghcr.io → Deploy to VPS ✨
 ```
 
 **Key benefits:**
