@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-SDLC Events Dashboard - Standalone</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 20px;
+            color: #667eea;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea20, #764ba220);
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .pipeline {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .stage {
+            flex: 1;
+            text-align: center;
+            padding: 15px 10px;
+            position: relative;
+        }
+
+        .stage::after {
+            content: '→';
+            position: absolute;
+            right: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #ccc;
+            font-size: 24px;
+        }
+
+        .stage:last-child::after {
+            display: none;
+        }
+
+        .stage-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+
+        .stage-name {
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #666;
+        }
+
+        .stage.completed {
+            background: #4caf5020;
+            border-radius: 8px;
+        }
+
+        .stage.completed .stage-icon {
+            filter: hue-rotate(90deg);
+        }
+
+        .timeline {
+            position: relative;
+        }
+
+        .timeline-item {
+            padding: 20px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s;
+        }
+
+        .timeline-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .event-type {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .event-time {
+            font-size: 13px;
+            color: #999;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .badge-completed {
+            background: #4caf5020;
+            color: #4caf50;
+        }
+
+        .badge-failed {
+            background: #f4433620;
+            color: #f44336;
+        }
+
+        .badge-in-progress {
+            background: #ff980020;
+            color: #ff9800;
+        }
+
+        .event-meta {
+            font-size: 13px;
+            color: #666;
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+
+        .event-id {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #999;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .instructions {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .instructions h3 {
+            color: #ff9800;
+            margin-bottom: 10px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin: 8px 0;
+            color: #666;
+        }
+
+        .instructions code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .file-input {
+            margin: 20px 0;
+        }
+
+        .file-input input[type="file"] {
+            display: none;
+        }
+
+        .file-input label {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .file-input label:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+
+        .info {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #0d47a1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 AI-SDLC Events Dashboard</h1>
+            <p class="subtitle">Real-time tracking and traceability for autonomous software development</p>
+        </header>
+
+        <div class="instructions">
+            <h3>📖 How to Use This Dashboard</h3>
+            <ol>
+                <li>First, generate sample events:
+                    <br><code>cd D:\git\homedir-ai-sdlc</code>
+                    <br><code>bash scripts/generate-sample-events.sh</code>
+                </li>
+                <li>Then click "Load Events File" below and select:
+                    <br><code>D:\git\homedir-ai-sdlc\local-state\events\all-events.jsonl</code>
+                </li>
+                <li>The dashboard will populate with event data automatically</li>
+            </ol>
+        </div>
+
+        <div class="file-input">
+            <input type="file" id="fileInput" accept=".jsonl">
+            <label for="fileInput">📂 Load Events File (all-events.jsonl)</label>
+            <span id="fileName" style="margin-left: 15px; color: #666;"></span>
+        </div>
+
+        <div id="content" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value" id="totalEvents">0</div>
+                    <div class="stat-label">Total Events</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="errorCount" style="color: #f44336;">0</div>
+                    <div class="stat-label">Errors</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="issueCount" style="color: #ff9800;">0</div>
+                    <div class="stat-label">Issues Tracked</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📈 Pipeline Stages</h2>
+                <div class="pipeline">
+                    <div class="stage" data-stage="detection">
+                        <div class="stage-icon">🔍</div>
+                        <div class="stage-name">Detection</div>
+                    </div>
+                    <div class="stage" data-stage="admission">
+                        <div class="stage-icon">✅</div>
+                        <div class="stage-name">Admission</div>
+                    </div>
+                    <div class="stage" data-stage="implementation">
+                        <div class="stage-icon">⚙️</div>
+                        <div class="stage-name">Implement</div>
+                    </div>
+                    <div class="stage" data-stage="pr_management">
+                        <div class="stage-icon">📋</div>
+                        <div class="stage-name">PR Mgmt</div>
+                    </div>
+                    <div class="stage" data-stage="ci_checks">
+                        <div class="stage-icon">🧪</div>
+                        <div class="stage-name">CI Checks</div>
+                    </div>
+                    <div class="stage" data-stage="remediation">
+                        <div class="stage-icon">🔧</div>
+                        <div class="stage-name">Remediate</div>
+                    </div>
+                    <div class="stage" data-stage="deployment">
+                        <div class="stage-icon">🚀</div>
+                        <div class="stage-name">Deploy</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📝 Event Timeline (Latest 20)</h2>
+                <div id="timeline" class="timeline"></div>
+            </div>
+        </div>
+
+        <div id="info" class="info" style="display: none;"></div>
+    </div>
+
+    <script>
+        let allEvents = [];
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('fileName').textContent = '📄 ' + file.name;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const lines = e.target.result.split('\n').filter(line => line.trim());
+                    allEvents = lines.map(line => JSON.parse(line));
+
+                    renderDashboard();
+                    document.getElementById('content').style.display = 'block';
+                    document.getElementById('info').style.display = 'none';
+
+                } catch (error) {
+                    document.getElementById('info').textContent = 'Error parsing file: ' + error.message;
+                    document.getElementById('info').style.display = 'block';
+                }
+            };
+
+            reader.readAsText(file);
+        });
+
+        function renderDashboard() {
+            // Statistics
+            const totalEvents = allEvents.length;
+            const errorCount = allEvents.filter(e => e.status === 'failed').length;
+            const issueCount = new Set(allEvents.map(e => e.issue_number)).size;
+
+            document.getElementById('totalEvents').textContent = totalEvents;
+            document.getElementById('errorCount').textContent = errorCount;
+            document.getElementById('issueCount').textContent = issueCount;
+
+            // Pipeline - mark stages that have events
+            const stages = {};
+            allEvents.forEach(event => {
+                stages[event.stage] = true;
+            });
+
+            document.querySelectorAll('.stage').forEach(stage => {
+                const stageName = stage.getAttribute('data-stage');
+                if (stages[stageName]) {
+                    stage.classList.add('completed');
+                }
+            });
+
+            // Timeline - show latest 20 events (reversed)
+            const timeline = document.getElementById('timeline');
+            const latestEvents = allEvents.slice(-20).reverse();
+
+            timeline.innerHTML = latestEvents.map(event => {
+                const badgeClass = event.status === 'completed' ? 'badge-completed' :
+                                  event.status === 'failed' ? 'badge-failed' :
+                                  'badge-in-progress';
+
+                const metadata = event.metadata || {};
+                const metaInfo = [];
+
+                if (metadata.decision) metaInfo.push(`Decision: ${metadata.decision}`);
+                if (metadata.reason) metaInfo.push(`Reason: ${metadata.reason}`);
+                if (metadata.duration_ms) {
+                    const seconds = Math.floor(metadata.duration_ms / 1000);
+                    metaInfo.push(`Duration: ${seconds}s`);
+                }
+                if (metadata.pr_url) metaInfo.push(`PR: ${metadata.pr_url}`);
+                if (metadata.error_message) metaInfo.push(`Error: ${metadata.error_message}`);
+                if (metadata.files_changed) metaInfo.push(`Files: ${metadata.files_changed}`);
+
+                return `
+                    <div class="timeline-item">
+                        <div class="event-header">
+                            <span class="event-type">${event.event_type}</span>
+                            <span class="event-time">${formatTimestamp(event.timestamp)}</span>
+                        </div>
+                        <div>
+                            <span class="badge ${badgeClass}">${event.status}</span>
+                            <span class="badge" style="background: #667eea20; color: #667eea">${event.stage}</span>
+                            <span class="badge" style="background: #76c7c020; color: #76c7c0">Issue #${event.issue_number}</span>
+                            ${event.pr_number ? `<span class="badge" style="background: #9c27b020; color: #9c27b0">PR #${event.pr_number}</span>` : ''}
+                        </div>
+                        ${metaInfo.length > 0 ? `
+                            <div class="event-meta">
+                                ${metaInfo.join(' • ')}
+                            </div>
+                        ` : ''}
+                        <div class="event-id">
+                            Event: ${event.event_id}<br>
+                            Tracking: ${event.tracking_id}<br>
+                            Action: ${event.action_id}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = now - date;
+            const seconds = Math.floor(diff / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+
+            if (days > 0) return `${days}d ago`;
+            if (hours > 0) return `${hours}h ago`;
+            if (minutes > 0) return `${minutes}m ago`;
+            return `${seconds}s ago`;
+        }
+    </script>
+</body>
+</html>

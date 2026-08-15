@@ -1,0 +1,29 @@
+# Local Testing Configuration - AI-SDLC
+# Generated: 2026-08-01
+
+# Repository
+HOMEDIR_SDLC_REPO=os-santiago/homedir
+
+# State directory (local testing)
+HOMEDIR_SDLC_STATE_DIR=/d/git/homedir-ai-sdlc/.local-test/state
+
+# Working directory for worktrees
+HOMEDIR_SDLC_WORKDIR=/d/git/homedir-ai-sdlc/.local-test/worktrees/homedir
+
+# Log file
+HOMEDIR_SDLC_LOGFILE=/d/git/homedir-ai-sdlc/.local-test/state/logs/worker.log
+
+# Limits for testing
+HOMEDIR_SDLC_MAX_ISSUES_PER_RUN=1
+
+# SCC binary (Windows local)
+SCC_BIN="node /d/git/sc-agent-cli/bin/sc.js"
+
+# GitHub token (uses gh auth)
+# GH_TOKEN will be read from gh cli auth
+
+# Worker version
+HOMEDIR_SDLC_WORKER_VERSION=local-test-1.0.0
+
+# Policy file
+HOMEDIR_SDLC_POLICY_FILE=/d/git/homedir-ai-sdlc/platform/config/autonomous-decision-policy.yaml
