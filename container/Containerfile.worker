@@ -56,17 +56,21 @@ RUN mkdir -p /etc/skel/.config/gh && \
     chmod -R 755 /etc/skel/.config
 
 # ============================================================================
-# SCC (Sourcegraph Code Copilot / Claude Code)
+# Claude Code CLI (SCC binary)
 # ============================================================================
-# Install SCC from Claude Code releases
-ARG SCC_VERSION=0.4.2
-RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
-    echo "Downloading SCC for ${ARCH}..." && \
-    curl -fsSL "https://github.com/anthropics/claude-code/releases/download/v${SCC_VERSION}/scc-linux-${ARCH}" \
-    -o /usr/local/bin/scc && \
-    chmod +x /usr/local/bin/scc && \
-    /usr/local/bin/scc --version || \
-    (echo "ERROR: SCC installation failed" && exit 1)
+# Install Claude Code CLI from releases
+ARG CLAUDE_VERSION=2.1.233
+RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
+    echo "Downloading Claude Code CLI ${CLAUDE_VERSION} for ${ARCH}..." && \
+    curl -fsSL "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_VERSION}/claude-linux-${ARCH}.tar.gz" \
+    -o /tmp/claude.tar.gz && \
+    tar -xzf /tmp/claude.tar.gz -C /usr/local/bin/ && \
+    rm /tmp/claude.tar.gz && \
+    chmod +x /usr/local/bin/claude && \
+    # Create scc symlink for backward compatibility with existing scripts
+    ln -s /usr/local/bin/claude /usr/local/bin/scc && \
+    claude --version || \
+    (echo "ERROR: Claude Code CLI installation failed" && exit 1)
 
 # ============================================================================
 # Rootless Compatibility
