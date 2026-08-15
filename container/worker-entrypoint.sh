@@ -73,11 +73,11 @@ log "INFO: Using GH_TOKEN for authentication (automatic)"
 
 # Verify authentication
 if ! gh auth status >/dev/null 2>&1; then
-  log "ERROR: GitHub CLI authentication verification failed"
-  exit 1
+  log "WARN: GitHub CLI authentication verification failed - will attempt to continue"
+  log "WARN: This may cause failures when interacting with GitHub"
+else
+  log "INFO: GitHub CLI authenticated successfully"
 fi
-
-log "INFO: GitHub CLI authenticated successfully"
 
 # ============================================================================
 # Git Configuration
