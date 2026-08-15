@@ -59,7 +59,7 @@ jobs:
 
       - name: Build and push worker image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: container/Containerfile.worker
@@ -144,7 +144,7 @@ jobs:
 
       - name: Build and push dashboard image
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: container/Containerfile.dashboard
