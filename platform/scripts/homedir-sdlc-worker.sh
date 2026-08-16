@@ -373,7 +373,12 @@ add_label() {
 remove_label() {
   local issue="$1"
   local label="$2"
-  gh issue edit "${issue}" --repo "${REPO}" --remove-label "${label}" >/dev/null 2>&1 || true
+  # Check if issue has the label before attempting removal to avoid gh CLI errors
+  local has_label
+  has_label="$(gh issue view "${issue}" --repo "${REPO}" --json labels --jq ".labels[].name" 2>/dev/null | grep -Fx "${label}" || true)"
+  if [[ -n "${has_label}" ]]; then
+    gh issue edit "${issue}" --repo "${REPO}" --remove-label "${label}" >/dev/null 2>&1 || true
+  fi
 }
 
 set_flow_labels() {
