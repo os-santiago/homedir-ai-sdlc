@@ -12,3 +12,6 @@ deploy/gitops/**/secrets.yaml
 
 # Maven build output
 target/
+.tmp/
+*.tar
+*.tar.gz
