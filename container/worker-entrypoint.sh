@@ -104,6 +104,24 @@ git config --global pull.rebase false
 log "INFO: Git configured"
 
 # ============================================================================
+# SC-Agent-CLI Configuration
+# ============================================================================
+log "INFO: Configuring sc-agent-cli..."
+
+# Copy default config if not exists (allows user customization to persist)
+if [[ ! -f ~/.sc-agent/config.json ]]; then
+  mkdir -p ~/.sc-agent
+  if [[ -f /etc/skel/.sc-agent/config.json ]]; then
+    cp /etc/skel/.sc-agent/config.json ~/.sc-agent/config.json
+    log "INFO: sc-agent-cli config initialized with unlimited permissions"
+  else
+    log "WARN: Default sc-agent-cli config not found in /etc/skel"
+  fi
+else
+  log "INFO: Using existing sc-agent-cli config"
+fi
+
+# ============================================================================
 # Policy System Check
 # ============================================================================
 log "INFO: Checking policy system..."
