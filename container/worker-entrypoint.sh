@@ -212,13 +212,31 @@ EOF
 log "INFO: Heartbeat written"
 
 # ============================================================================
-# Start Worker
+# Start Worker Loop
 # ============================================================================
-log "INFO: Starting AI SDLC worker..."
+log "INFO: Starting AI SDLC worker loop..."
 log "INFO: Mode: ${1:-reconcile}"
 log "INFO: Repository: ${HOMEDIR_SDLC_REPO}"
 log "INFO: State: ${HOMEDIR_SDLC_STATE_DIR}"
 log "INFO: Worktree: ${HOMEDIR_SDLC_WORKDIR}"
+log "INFO: Interval: ${HOMEDIR_SDLC_INTERVAL:-180}s"
 
-# Execute worker script
-exec "${PLATFORM_DIR}/scripts/homedir-sdlc-worker.sh" "$@"
+# Worker loop - runs reconcile cycles every N seconds (default 180s = 3min)
+# This replicates systemd timer behavior when running in container
+INTERVAL="${HOMEDIR_SDLC_INTERVAL:-180}"
+
+while true; do
+  log "INFO: Starting reconcile cycle at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Run worker reconcile cycle
+  if "${PLATFORM_DIR}/scripts/homedir-sdlc-worker.sh" "$@"; then
+    log "INFO: Reconcile cycle completed successfully"
+  else
+    EXIT_CODE=$?
+    log "WARN: Reconcile cycle exited with code ${EXIT_CODE}"
+    # Don't exit - keep running to maintain worker availability
+  fi
+
+  log "INFO: Sleeping ${INTERVAL}s until next cycle..."
+  sleep "${INTERVAL}"
+done
