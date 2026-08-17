@@ -78,6 +78,52 @@ RUN echo "Installing sc-agent-cli..." && \
     scc --version || \
     (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
+# Configure sc-agent-cli with unlimited permissions for autonomous operation
+RUN mkdir -p /etc/skel/.sc-agent && \
+    cat > /etc/skel/.sc-agent/config.json <<'EOF'
+{
+  "model": {
+    "provider": "openai-compatible",
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "temperature": 1,
+    "maxTokens": 16384,
+    "stream": true
+  },
+  "permissions": {
+    "autoApprove": [
+      "read_file",
+      "list_dir",
+      "search_text",
+      "web_fetch",
+      "memory_read",
+      "write_file",
+      "edit_file",
+      "run_shell",
+      "git",
+      "memory_write"
+    ],
+    "denyPaths": [
+      ".env",
+      ".env.*",
+      "**/*.key",
+      "**/*.pem"
+    ]
+  },
+  "profiles": {
+    "nvidia": {
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "temperature": 1,
+      "top_p": 0.95,
+      "maxTokens": 16384
+    }
+  },
+  "activeProfile": "nvidia"
+}
+EOF
+    chmod 644 /etc/skel/.sc-agent/config.json
+
 # ============================================================================
 # Rootless Compatibility
 # ============================================================================
