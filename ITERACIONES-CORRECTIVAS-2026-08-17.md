@@ -524,5 +524,29 @@ Aumentar timeouts para reflejar realidad de SCC+Nemotron performance:
 - `platform/scripts/homedir-sdlc-worker.sh:192-200` - función `get_timeout_for_complexity()`
 
 **Commits:**
-- (pendiente build)
+- `18ea649` - fix(worker): increase SCC timeout thresholds for Nemotron API latency
+
+**Build Status:**
+- ✅ Worker Container: SUCCESS
+  - Imagen: `ghcr.io/os-santiago/homedir-ai-sdlc/worker:main-18ea649`
+  - Contiene timeout fix, listo para deploy
+- ❌ Dashboard Container: FAILED (compilation errors en EventApiResource.java)
+  - Problema pre-existente, NO relacionado con timeout fix
+- ⏸️ Deploy to VPS: SKIPPED (dependency failure)
+
+**Deployment:**
+- Status: Manual deployment required
+- Imagen lista: `ghcr.io/os-santiago/homedir-ai-sdlc/worker:main-18ea649`
+- Comando manual en VPS:
+  ```bash
+  podman pull ghcr.io/os-santiago/homedir-ai-sdlc/worker:main-18ea649
+  # Update /root/homedir/container/config/production.local.env
+  # WORKER_IMAGE_TAG=main-18ea649
+  podman stop homedir-ai-sdlc-worker
+  podman rm homedir-ai-sdlc-worker
+  cd /root/homedir/container && ./deploy-production.sh
+  ```
+
+**Próximo Paso:**
+- Requiere deployment manual a VPS para validar con Test E2E #3
 
