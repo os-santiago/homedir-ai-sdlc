@@ -775,7 +775,74 @@ import jakarta.ws.rs.QueryParam;
 - Build todavía no validado (dashboard quedó en f5daa12)
 - Esperando próximo commit para trigger build
 
-**Pendiente:**
-- Trigger nuevo build para validar dashboard fix
-- Una vez exitoso, deployment incluirá dashboard completo
+**Validación:**
+- Dashboard build pendiente (esperando próximo deployment exitoso)
+
+---
+
+## ✅ ITERACIÓN #11: Fix worker.env Format + Container Health (EN PROGRESO)
+
+**Problema #1:** Worker container crashes inmediatamente (status: stopped)
+**Problema #2:** YAML syntax error impide deployment
+
+### Problema Raíz #1: worker.env Format
+
+**Error Observado:**
+- Container ID creado: 041e8fad9a0d
+- Status después de 30s: stopped ❌
+- No worker activity desde deployment
+
+**Causa:**
+worker.env generado con leading whitespace (indentación YAML):
+```bash
+cat > worker.env <<EOF
+            GH_TOKEN=...      # ← Espacios invalidan formato
+EOF
+```
+
+`podman --env-file` require formato sin leading whitespace.
+
+**Intento #1 (c1062e0):** Quoted heredoc + sed
+- Used `<<'ENVEOF'` to prevent premature expansion
+- Variables sin indentación
+- sed para sustituir secrets
+- Añadido health check (wait 10s, verify status)
+- Capture logs si container crashed
+
+**Resultado:** Build failed - YAML syntax error
+
+### Problema Raíz #2: YAML Syntax Error
+
+**Error:**
+```
+yaml.scanner.ScannerError: line 205, column 1
+could not find expected ':'
+```
+
+**Causa:**
+Heredoc delimiter `ENVEOF` at column 1 rompe indentación YAML.
+En `script: |`, TODO el contenido debe estar indentado.
+
+**Solución Final (3d595ef):** printf en lugar de heredoc
+```bash
+printf '%s\n' \
+  "GH_TOKEN=${GH_TOKEN}" \
+  "NVIDIA_API_KEY=${NVIDIA_API_KEY}" \
+  'STATIC_VAR=value' \
+  > /etc/homedir-sdlc/worker.env
+```
+
+**Beneficios:**
+- ✅ YAML syntax válido (verificado)
+- ✅ No indentation issues
+- ✅ Direct variable expansion
+- ✅ Health check incluido
+
+**Commits:**
+- `c1062e0` - Fix worker.env format + health check (YAML syntax error)
+- `3d595ef` - Fix YAML syntax error (printf approach)
+
+**Status:**
+- ⏳ Build en progreso (3d595ef)
+- Esperando deployment y container health check
 
