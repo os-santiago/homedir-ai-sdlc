@@ -101,11 +101,7 @@ git config --global user.email "${HOMEDIR_SDLC_GIT_USER_EMAIL:-homedir-sdlc@user
 git config --global init.defaultBranch main
 git config --global pull.rebase false
 
-# Configure git credential helper to use GH_TOKEN for HTTPS push
-# This allows git push to https://github.com URLs without interactive password prompt
-git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN}"; }; f'
-
-log "INFO: Git configured with credential helper for GitHub"
+log "INFO: Git configured"
 
 # ============================================================================
 # SC-Agent-CLI Configuration
@@ -182,11 +178,20 @@ else
   log "INFO: Repository updated"
 fi
 
-# Configure git credential helper in the worktree (local config)
-# This ensures git push works even if global config wasn't inherited
+# Configure git remote URL to include GH_TOKEN for HTTPS push authentication
+# This is more reliable than credential helper in container/SSH context
 cd "${WORKTREE_PATH}"
-git config credential.helper '!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN}"; }; f'
-log "INFO: Configured git credential helper in worktree"
+CURRENT_REMOTE=$(git remote get-url origin)
+# Only update if not already using token (to avoid double-updating)
+if [[ ! "${CURRENT_REMOTE}" =~ x-access-token ]]; then
+  # Extract repo path from current URL (works for both https and git@ URLs)
+  REPO_PATH=$(echo "${CURRENT_REMOTE}" | sed -E 's#.*(github\.com[:/])(.+)#\2#' | sed 's/\.git$//')
+  NEW_REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO_PATH}.git"
+  git remote set-url origin "${NEW_REMOTE}"
+  log "INFO: Configured git remote URL with token authentication"
+else
+  log "INFO: Git remote already configured with token"
+fi
 
 log "INFO: Worktree ready at ${WORKTREE_PATH}"
 
