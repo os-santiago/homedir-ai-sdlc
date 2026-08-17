@@ -157,7 +157,10 @@ jobs:
   deploy-vps:
     name: Deploy to VPS
     runs-on: ubuntu-latest
+    # Allow deployment to proceed even if one component fails
+    # This enables partial deployment (e.g., worker succeeds but dashboard fails)
     needs: [build-worker, build-dashboard]
+    if: always() && needs.build-worker.result == 'success'
     # Deploy is optional - will skip if secrets not configured
     continue-on-error: true
     environment:
@@ -172,27 +175,24 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         env:
           GITHUB_SHA: ${{ github.sha }}
+          WORKER_BUILD_SUCCESS: ${{ needs.build-worker.result == 'success' }}
+          DASHBOARD_BUILD_SUCCESS: ${{ needs.build-dashboard.result == 'success' }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          envs: GITHUB_SHA
-          script_stop: true
+          envs: GITHUB_SHA,WORKER_BUILD_SUCCESS,DASHBOARD_BUILD_SUCCESS
+          script_stop: false
           script: |
             set -e
 
             echo "=== AI-SDLC Production Deployment ==="
             echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
             echo "Commit: $GITHUB_SHA"
+            echo "Worker build: $WORKER_BUILD_SUCCESS"
+            echo "Dashboard build: $DASHBOARD_BUILD_SUCCESS"
             echo ""
-
-            # Pull latest images
-            echo "Pulling worker image..."
-            podman pull ${{ env.IMAGE_WORKER }}:latest
-
-            echo "Pulling dashboard image..."
-            podman pull ${{ env.IMAGE_DASHBOARD }}:latest
 
             # Stop existing pod
             echo "Stopping existing AI-SDLC pod..."
@@ -205,26 +205,41 @@ jobs:
               --name ai-sdlc \
               -p 8081:8080
 
-            # Start worker container
-            echo "Starting worker container..."
-            podman run -d \
-              --pod ai-sdlc \
-              --name ai-sdlc-worker \
-              --restart unless-stopped \
-              --env-file /etc/homedir-sdlc/worker.env \
-              -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
-              -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
-              ${{ env.IMAGE_WORKER }}:latest
+            # Deploy worker (always - this job only runs if worker build succeeded)
+            if [ "$WORKER_BUILD_SUCCESS" = "true" ]; then
+              echo "Pulling worker image..."
+              podman pull ${{ env.IMAGE_WORKER }}:latest
 
-            # Start dashboard container
-            echo "Starting dashboard container..."
-            podman run -d \
-              --pod ai-sdlc \
-              --name ai-sdlc-dashboard \
-              --restart unless-stopped \
-              -e HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc \
-              -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc:ro \
-              ${{ env.IMAGE_DASHBOARD }}:latest
+              echo "Starting worker container..."
+              podman run -d \
+                --pod ai-sdlc \
+                --name ai-sdlc-worker \
+                --restart unless-stopped \
+                --env-file /etc/homedir-sdlc/worker.env \
+                -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
+                -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
+                ${{ env.IMAGE_WORKER }}:latest
+            else
+              echo "⚠️  Worker build failed - skipping worker deployment"
+            fi
+
+            # Deploy dashboard (conditional - only if build succeeded)
+            if [ "$DASHBOARD_BUILD_SUCCESS" = "true" ]; then
+              echo "Pulling dashboard image..."
+              podman pull ${{ env.IMAGE_DASHBOARD }}:latest
+
+              echo "Starting dashboard container..."
+              podman run -d \
+                --pod ai-sdlc \
+                --name ai-sdlc-dashboard \
+                --restart unless-stopped \
+                -e HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc \
+                -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc:ro \
+                ${{ env.IMAGE_DASHBOARD }}:latest
+            else
+              echo "⚠️  Dashboard build failed - skipping dashboard deployment"
+              echo "Worker can operate independently without dashboard"
+            fi
 
             # Wait for containers to be healthy
             echo ""
@@ -232,8 +247,12 @@ jobs:
             sleep 30
 
             # Check health
-            echo "Worker status: $(podman inspect ai-sdlc-worker --format='{{.State.Status}}')"
-            echo "Dashboard status: $(podman inspect ai-sdlc-dashboard --format='{{.State.Status}}')"
+            if podman container exists ai-sdlc-worker; then
+              echo "Worker status: $(podman inspect ai-sdlc-worker --format='{{.State.Status}}')"
+            fi
+            if podman container exists ai-sdlc-dashboard; then
+              echo "Dashboard status: $(podman inspect ai-sdlc-dashboard --format='{{.State.Status}}')"
+            fi
 
             # Verify heartbeat
             if [ -f /var/lib/homedir-sdlc/heartbeat.json ]; then
@@ -244,7 +263,9 @@ jobs:
 
             echo ""
             echo "Deployment complete!"
-            echo "Dashboard: https://homedir-ai-sdlc.opensourcesantiago.io"
+            if [ "$DASHBOARD_BUILD_SUCCESS" = "true" ]; then
+              echo "Dashboard: https://homedir-ai-sdlc.opensourcesantiago.io"
+            fi
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.3
