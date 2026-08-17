@@ -189,13 +189,14 @@ classify_issue_complexity() {
 }
 
 # Get timeout based on complexity (ADEV Rule #6)
+# Adjusted timeouts for Nemotron API latency (Iteration #7)
 get_timeout_for_complexity() {
   local complexity="$1"
   case "${complexity}" in
-    simple)  echo 300 ;;   # 5 minutes
-    medium)  echo 600 ;;   # 10 minutes
-    complex) echo 900 ;;   # 15 minutes
-    *)       echo 600 ;;   # default 10 minutes
+    simple)  echo 600 ;;   # 10 minutes (increased from 5min - Nemotron API has high latency)
+    medium)  echo 900 ;;   # 15 minutes (increased from 10min)
+    complex) echo 1200 ;;  # 20 minutes (increased from 15min)
+    *)       echo 900 ;;   # default 15 minutes
   esac
 }
 
