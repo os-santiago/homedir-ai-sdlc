@@ -182,6 +182,12 @@ else
   log "INFO: Repository updated"
 fi
 
+# Configure git credential helper in the worktree (local config)
+# This ensures git push works even if global config wasn't inherited
+cd "${WORKTREE_PATH}"
+git config credential.helper '!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN}"; }; f'
+log "INFO: Configured git credential helper in worktree"
+
 log "INFO: Worktree ready at ${WORKTREE_PATH}"
 
 # ============================================================================
