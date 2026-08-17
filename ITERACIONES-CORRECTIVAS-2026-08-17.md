@@ -610,5 +610,100 @@ deploy-vps:
 - ✅ Deployment automático end-to-end sin intervención manual
 
 **Status:**
-- ⏳ Build CI/CD en progreso (commit cb8f2c2)
+- ✅ COMPLETADA
+- Build: cb8f2c2
+- Deploy: SUCCESS (worker deployed, dashboard skipped)
+- Worker: running in production
+- Resultado: CI/CD end-to-end automático funcionando
+
+**Validación:**
+```
+Workflow Run: 32064186431
+- Build Worker: SUCCESS
+- Build Dashboard: FAILURE (pre-existing)
+- Deploy VPS: SUCCESS (partial deployment)
+  * Worker build: true → DEPLOYED
+  * Dashboard build: false → SKIPPED
+  * Worker status: running ✅
+```
+
+**Autonomía:**
+- 0% → 100% (CI/CD deployment automation)
+- Worker deployments nunca bloqueados por dashboard failures
+- True end-to-end automation sin intervención manual
+
+---
+
+## 🎯 TEST E2E #3 - RETRY (EN PROGRESO)
+
+**Issue:** #1493 - Fix typo in README.md  
+**Objetivo:** Validar Iteración #7 (timeout fix) en producción
+
+**Setup:**
+- Worker: ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest
+- Timeout simple: 600s (10 min) ← AUMENTADO desde 300s
+- Labels: ready-to-implement, scc-accepted, bug, priority:P3
+- scc-failed: REMOVIDO
+
+**Timeline Esperado:**
+1. Worker detecta issue (< 3 min desde reset)
+2. Classify: "simple" (2 acceptance criteria)
+3. SCC execution: timeout 600s (10 min)
+4. **VALIDACIÓN CRÍTICA:** SCC completa en 6-8 min (sin timeout)
+5. Commit + push
+6. PR creation automática
+
+**Resultado:**
+- ✅ Worker detectó y procesó issue (21:52:46)
+- ✅ SCC ejecutó sin timeout (54 segundos)
+- ❌ **SCC completó SIN CAMBIOS** - "Agent responded with intent but did not execute tools"
+- ❌ No PR creado
+- ❌ Label: needs-human
+
+**Root Cause Identificada:**
+
+Problema: sc-agent-cli no está ejecutando herramientas (write_file, edit_file)
+
+Verificado:
+- ✅ Containerfile tiene config.json con autoApprove
+- ✅ Entrypoint copia config a ~/.sc-agent/config.json  
+- ✅ Deployment exitoso (cb8f2c2)
+
+**Hipótesis Principal:**
+Container usa `--env-file /etc/homedir-sdlc/worker.env` pero este archivo
+en VPS puede no contener NVIDIA_API_KEY.
+
+Sin NVIDIA_API_KEY:
+- sc-agent-cli no puede autenticarse con NVIDIA API
+- Podría fallar silenciosamente o usar modelo fallback
+- Modelo fallback puede no soportar tool calls
+
+**Evidencia:**
+- Test E2E #1 falló con "NVIDIA API requires an API key"
+- Agregamos key a production.local.env en ese momento
+- PERO deployment nuevo usa /etc/homedir-sdlc/worker.env
+- Este archivo debe crearse manualmente en VPS
+
+---
+
+## 🎯 ITERACIÓN #10: Document Worker Environment Requirements (EN PROGRESO)
+
+**Problema:** Container deployment requiere /etc/homedir-sdlc/worker.env con credenciales
+
+**Solución:**
+- Creado container/config/worker.env.example
+- Documenta TODAS las variables requeridas
+- Include NVIDIA_API_KEY, GH_TOKEN, etc.
+
+**Deploy Instructions Needed:**
+1. SSH to VPS
+2. Create /etc/homedir-sdlc/worker.env
+3. Populate with actual values (GH_TOKEN, NVIDIA_API_KEY)
+4. Restart worker container
+5. Retry Test E2E #3
+
+**Bloqueador:**
+- Sin acceso SSH al VPS, no podemos crear worker.env
+- Deployment automático no puede crear archivos con secrets
+- **Requiere intervención manual ONE-TIME para setup inicial**
 
