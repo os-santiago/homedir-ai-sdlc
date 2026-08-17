@@ -843,6 +843,71 @@ printf '%s\n' \
 - `3d595ef` - Fix YAML syntax error (printf approach)
 
 **Status:**
-- ⏳ Build en progreso (3d595ef)
-- Esperando deployment y container health check
+- ✅ COMPLETADA
+- Build: 3d595ef
+- Deploy: SUCCESS (Run 32077427171)
+- Container: running, health check passed
+- Worker: operativo desde 22:46 UTC
+
+**Resultado:**
+```
+Container ID: 59346636be9f
+Status: running ✅
+Heartbeat: active ✅
+worker.env: formato correcto ✅
+```
+
+---
+
+## ✅ ITERACIÓN #12: Increase SCC Timeouts Again (EN PROGRESO)
+
+**Problema:** Test E2E #3 timeout a los 10 minutos (simple task)
+
+**Timeline:**
+- 22:54:17 - SCC started (complexity: simple, timeout: 600s)
+- 23:04:28 - SCC TIMED OUT (after 600s / 10 min) ❌
+
+**Análisis Comparativo:**
+```
+Test #2 (complex, 3 criteria): 12:47 min → SUCCESS
+Test #3 (simple, 2 criteria):  >10:00 min → TIMEOUT
+```
+
+**Root Cause:**
+Simple tasks tomando tanto o más tiempo que complex tasks indica que
+Nemotron 550B API tiene latencia baseline MUY alta, independiente de
+complejidad de task. El modelo es muy grande (550B params) y la
+inferencia es naturalmente lenta.
+
+**Evidencia:**
+- 10 minutos insuficiente incluso para task más simple
+- Test #2 (complex) tomó 12:47 min
+- Nemotron no diferencia mucho por complejidad - todas las tasks lentas
+
+**Solución Implementada:**
+
+Aumentar TODOS los timeouts con márgenes mayores:
+
+| Complexity | Antes (Iter #7) | Después (Iter #12) | Cambio | Justificación |
+|------------|-----------------|--------------------|---------| --------------|
+| simple     | 600s (10min)    | **900s (15min)**   | +50%   | Test #3 timeout a 10min |
+| medium     | 900s (15min)    | **1200s (20min)**  | +33%   | Escala proporcional |
+| complex    | 1200s (20min)   | **1500s (25min)**  | +25%   | Test #2 = 12:47, margin |
+| default    | 900s (15min)    | **1200s (20min)**  | +33%   | Conservative default |
+
+**Justificación:**
+- Test #2 tomó 12:47 → mínimo 15 min necesario
+- Agregar 2-3 min safety margin
+- Nemotron API simplemente es lento para TODAS las tasks
+
+**Código Modificado:**
+- `platform/scripts/homedir-sdlc-worker.sh:192-200`
+
+**Commits:**
+- `ceff7ef` - fix(worker): increase SCC timeouts again
+
+**Status:**
+- ⏳ Build en progreso
+- Deployment pending
+- Test E2E #3 retry #4 pending
 
