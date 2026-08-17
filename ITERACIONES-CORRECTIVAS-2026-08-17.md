@@ -492,8 +492,37 @@ fi
 
 ---
 
-**Última actualización:** 2026-08-17 15:50 UTC  
+**Última actualización:** 2026-08-17 16:30 UTC  
 **Worker Version:** ghcr.io/os-santiago/homedir-ai-sdlc/worker:main-b0ba8c9 (última exitosa)
 **Worker Status:** Operativo (con todas las iteraciones #1-#5 aplicadas)  
 **PR de Validación:** #1492 (código generado por SCC - EXCELENTE calidad)
+
+---
+
+## ✅ ITERACIÓN #7: Increase SCC Timeout Thresholds (EN PROGRESO)
+
+**Problema:** SCC timeout para tasks simples (300s / 5 min)
+
+**Evidencia:**
+- Test E2E #2 (CSS fix, complex): 12:47 min → SUCCESS (dentro de 900s)
+- Test E2E #3 (typo fix, simple): TIMEOUT a 5:00 min (300s alcanzado)
+- Root cause: NVIDIA Nemotron API (550B params) tiene latencia inherente alta
+- Incluso tasks "simples" necesitan 5-10 minutos mínimo
+
+**Solución Aplicada:**
+
+Aumentar timeouts para reflejar realidad de SCC+Nemotron performance:
+
+| Complexity | Antes | Después | Justificación |
+|------------|-------|---------|---------------|
+| simple     | 300s (5min)  | 600s (10min)  | Test #3 timeout a 5min - necesita al menos 10min |
+| medium     | 600s (10min) | 900s (15min)  | Margen para 2 criteria issues |
+| complex    | 900s (15min) | 1200s (20min) | Test #2 tomó 12:47 - dar margen 20min |
+| default    | 600s (10min) | 900s (15min)  | Aumentar default conservadoramente |
+
+**Código Modificado:**
+- `platform/scripts/homedir-sdlc-worker.sh:192-200` - función `get_timeout_for_complexity()`
+
+**Commits:**
+- (pendiente build)
 
