@@ -82,13 +82,14 @@ fi
 
 # Verify authentication with actual API test instead of gh auth status
 # gh auth status can fail even when GH_TOKEN works fine
+# This is a best-effort check - continue even if API is temporarily unavailable
 log "INFO: Verifying GitHub API access..."
 if gh api user --silent 2>/dev/null; then
   log "INFO: GitHub API access verified successfully"
 else
-  log "ERROR: GitHub API access failed - check GH_TOKEN validity"
-  log "ERROR: Repository: ${HOMEDIR_SDLC_REPO}"
-  exit 1
+  log "WARN: GitHub API access check failed - API may be temporarily unavailable"
+  log "WARN: Worker will continue - operations will fail if token is actually invalid"
+  # Don't exit - allow worker to start and fail later if token is really invalid
 fi
 
 # ============================================================================
