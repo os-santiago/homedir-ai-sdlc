@@ -548,5 +548,67 @@ Aumentar timeouts para reflejar realidad de SCC+Nemotron performance:
   ```
 
 **Próximo Paso:**
-- Requiere deployment manual a VPS para validar con Test E2E #3
+- ~~Requiere deployment manual a VPS~~ → FIX aplicado (ver Iteración #8)
+
+---
+
+## ✅ ITERACIÓN #8: Fix CI/CD Partial Deployment (EN PROGRESO)
+
+**Problema:** Deployment automático fallaba si dashboard build fallaba
+
+**Causa Raíz:**
+```yaml
+deploy-vps:
+  needs: [build-worker, build-dashboard]  # Requiere AMBOS
+```
+
+- GitHub Actions salta el job si CUALQUIER dependencia falla
+- Dashboard build falló → deployment completo skipped
+- Worker build exitoso pero nunca deployado
+- **Rompe la automatización end-to-end**
+
+**Arquitectura:**
+- Worker: CRÍTICO (autonomous SDLC operations)
+- Dashboard: OPCIONAL (solo observabilidad)
+- Sistema funciona perfectamente SOLO con worker
+- Dashboard failure NO debe bloquear worker deployment
+
+**Solución Implementada:**
+
+1. **Deployment condicional:**
+   ```yaml
+   if: always() && needs.build-worker.result == 'success'
+   ```
+   - Deployment procede si worker build OK
+   - Dashboard result irrelevante para ejecución del job
+
+2. **Deploy componentes por separado:**
+   ```bash
+   if [ "$WORKER_BUILD_SUCCESS" = "true" ]; then
+     # Deploy worker
+   fi
+   if [ "$DASHBOARD_BUILD_SUCCESS" = "true" ]; then
+     # Deploy dashboard
+   else
+     echo "⚠️  Dashboard build failed - skipping dashboard deployment"
+     echo "Worker can operate independently"
+   fi
+   ```
+
+3. **script_stop: false**
+   - Permite partial failures sin abortar deployment completo
+
+**Código Modificado:**
+- `.github/workflows/deploy-production.yml:157-247`
+
+**Commits:**
+- `cb8f2c2` - fix(cicd): enable partial deployment when dashboard build fails
+
+**Resultado Esperado:**
+- ✅ Worker container → SUCCESS → DEPLOYED
+- ❌ Dashboard container → FAIL → SKIPPED
+- ✅ Deployment automático end-to-end sin intervención manual
+
+**Status:**
+- ⏳ Build CI/CD en progreso (commit cb8f2c2)
 
