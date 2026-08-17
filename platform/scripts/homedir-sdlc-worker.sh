@@ -555,7 +555,17 @@ check_issue_atomicity() {
     if echo "$body" | grep -qi 'batch delivery\|batch mode'; then
       log "Issue #${number} has 'batch delivery' label/mention; proceeding with extended timeout"
       return 0  # Allow, but will use complex timeout (15 min)
-    else
+    fi
+
+    # Auto-approve batch delivery for 3-4 criteria (most common case)
+    if [[ "${criteria_count}" -le 4 ]]; then
+      log "Issue #${number} has ${criteria_count} criteria - auto-applying batch delivery mode"
+      log "INFO: Batch delivery auto-approved for moderate complexity (3-4 criteria)"
+      return 0  # Auto-approve with complex timeout
+    fi
+
+    # For 5+ criteria, require split or manual batch delivery
+    if [[ "${criteria_count}" -ge 5 ]]; then
       # AUTO-SPLIT: Component #2 - Admission Auto-Processor
       log "Auto-splitting issue #${number} into ${criteria_count} atomic issues"
 
@@ -563,9 +573,9 @@ check_issue_atomicity() {
         local split_result
         split_result=$(/home/homedir-sdlc/.local/bin/split-multi-criteria-issue.sh "${number}" 2>&1) || {
           log "ERROR: Auto-split failed for issue #${number}: ${split_result}"
-          # Fallback to old behavior
-          comment_issue "${number}" "This issue has ${criteria_count} acceptance criteria. Per ADEV discipline, issues should have 1-2 atomic objectives. Please either:
-1. Split into separate issues (recommended), or
+          # Fallback to manual request
+          comment_issue "${number}" "This issue has ${criteria_count} acceptance criteria (high complexity). Per ADEV discipline, issues should have 1-2 atomic objectives. Please either:
+1. Split into separate issues (recommended for ${criteria_count}+ criteria), or
 2. Add 'batch delivery' to the issue body and define explicit stages for each criterion."
           return 1
         }
@@ -574,9 +584,9 @@ check_issue_atomicity() {
         return 1  # Do not admit original (already closed by split script)
       else
         log "WARN: split-multi-criteria-issue.sh not found, falling back to manual request"
-        comment_issue "${number}" "This issue has ${criteria_count} acceptance criteria. Per ADEV discipline, issues should have 1-2 atomic objectives. Please either:
-1. Split into separate issues (recommended), or
-2. Add 'batch delivery' to the issue body and define explicit stages for each criterion."
+        comment_issue "${number}" "This issue has ${criteria_count} acceptance criteria (high complexity). Per ADEV discipline, issues should have 1-2 atomic objectives. Please either:
+1. Split into separate issues (recommended for ${criteria_count}+ criteria), or
+2. Add 'batch delivery' to the issue body if all criteria are tightly coupled."
         return 1
       fi
     fi
