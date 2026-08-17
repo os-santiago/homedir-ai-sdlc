@@ -907,7 +907,98 @@ Aumentar TODOS los timeouts con márgenes mayores:
 - `ceff7ef` - fix(worker): increase SCC timeouts again
 
 **Status:**
+- ✅ COMPLETADA
+- Build: ceff7ef
+- Deploy: SUCCESS (Run 32079693388)
+- Worker: operativo con timeouts 15/20/25 min
+
+**Resultado Test E2E #3 Retry #4:**
+```
+Timeline:
+  23:30:00 - Issue admitted ✅
+  23:30:06 - Worker claimed ✅  
+  23:38:07 - SCC completed (8 min) ✅ NO TIMEOUT
+           - Sin cambios ❌ (tools no ejecutados)
+```
+
+**Progreso:**
+  ✅ Timeout resuelto (15 min suficiente)
+  ❌ Agent no ejecuta tools
+
+**Análisis:**
+  SCC completa rápidamente y se conecta a API correctamente,
+  pero agent no ejecuta write_file/edit_file.
+  
+  Root cause identificado → Ver Iteración #13
+
+---
+
+## ✅ ITERACIÓN #13: Fix CLI Flag Conflicting with config.json (EN PROGRESO)
+
+**Problema:** SCC completa sin generar cambios (Retry #1 y #4)
+
+**Root Cause Discovery:**
+
+Worker script pasaba `--permissions unlimited` como CLI flag:
+```bash
+Line 281-283:
+if [[ -n "${SCC_PERMISSIONS}" ]]; then
+  scc_args+=(--permissions "${SCC_PERMISSIONS}")
+fi
+```
+
+**Conflicto Crítico:**
+
+1. **Iteración #1** (días atrás):
+   - Descubierto: Flag CLI `--permissions unlimited` NO funciona
+   - Solución: Crear config.json con autoApprove array
+   - Test manual: Funcionó ✅
+
+2. **PROBLEMA:**
+   - Worker script NUNCA fue actualizado
+   - Seguía usando flag CLI que no funciona
+   - Flag CLI toma precedencia sobre config.json
+   - Config.json efectivamente ignorado
+
+3. **Evidencia del Conflicto:**
+   ```
+   Container: config.json creado ✅
+   Entrypoint: config copiado a ~/.sc-agent/config.json ✅
+   Worker: Pasa --permissions unlimited flag ❌
+   Resultado: Flag override config → tools no ejecutan
+   ```
+
+**Solución Implementada:**
+
+REMOVIDO completamente el flag --permissions del worker script:
+```bash
+# ANTES:
+if [[ -n "${SCC_PERMISSIONS}" ]]; then
+  scc_args+=(--permissions "${SCC_PERMISSIONS}")
+fi
+
+# DESPUÉS:
+# NOTE: Do NOT use --permissions flag - it conflicts with config.json
+# sc-agent-cli permissions MUST be configured via ~/.sc-agent/config.json
+# (removed conflicting flag)
+```
+
+**Código Modificado:**
+- `platform/scripts/homedir-sdlc-worker.sh:272-287`
+
+**Commits:**
+- `1ec7589` - fix(worker): remove --permissions flag that conflicts with config.json
+
+**Esperado:**
+- Config.json finalmente se aplica sin interferencia
+- sc-agent-cli lee autoApprove array correctamente
+- Tools (write_file, edit_file) ejecutan sin pedir permiso
+- SCC genera commits con código
+- PR creado automáticamente
+
+**Status:**
 - ⏳ Build en progreso
 - Deployment pending
-- Test E2E #3 retry #4 pending
+- Test E2E #3 retry #5 pending
+- **Confianza:** ALTA - Este es probablemente THE fix definitivo
 
