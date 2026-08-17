@@ -101,7 +101,11 @@ git config --global user.email "${HOMEDIR_SDLC_GIT_USER_EMAIL:-homedir-sdlc@user
 git config --global init.defaultBranch main
 git config --global pull.rebase false
 
-log "INFO: Git configured"
+# Configure git credential helper to use GH_TOKEN for HTTPS push
+# This allows git push to https://github.com URLs without interactive password prompt
+git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN}"; }; f'
+
+log "INFO: Git configured with credential helper for GitHub"
 
 # ============================================================================
 # SC-Agent-CLI Configuration
