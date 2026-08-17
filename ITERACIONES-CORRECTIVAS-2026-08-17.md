@@ -320,7 +320,76 @@ done
 
 ---
 
-**Última actualización:** 2026-08-17 11:51 UTC  
-**Worker Version:** ghcr.io/os-santiago/homedir-ai-sdlc/worker:main-81665f5 (loop infinito)
-**Worker Status:** Up 7 minutes, ejecutando ciclos cada 180s
+---
+
+## ✅ ITERACIÓN #5: Git Push Authentication (COMPLETADA)
+
+**Problema:** Git push fails con "fatal: could not read Username for 'https://github.com'"
+
+**Causa Raíz:** 
+- Remote URL usa HTTPS: `https://github.com/os-santiago/homedir.git`
+- Git no tiene credenciales configuradas para push
+- Worker tiene GH_TOKEN pero git no sabe usarlo
+
+**Intentos y Aprendizajes:**
+
+### Intento #1: Credential Helper Global (1fa715b) ❌
+```bash
+git config --global credential.helper '!f() { 
+  echo "username=x-access-token"; 
+  echo "password=${GH_TOKEN}"; 
+}; f'
+```
+**Fallo:** Variable ${GH_TOKEN} no se expande correctamente en git config string
+
+### Intento #2: Credential Helper en Worktree (6543092) ❌
+```bash
+cd worktree
+git config credential.helper '!f() { 
+  echo "username=x-access-token"; 
+  echo "password=${GH_TOKEN}"; 
+}; f'
+```
+**Fallo:** Mismo problema - variable queda vacía al ejecutar el helper
+
+### Intento #3: Token en Remote URL (b0ba8c9) ✅
+```bash
+CURRENT_REMOTE=$(git remote get-url origin)
+REPO_PATH=$(echo "${CURRENT_REMOTE}" | sed -E 's#.*(github\.com[:/])(.+)#\2#')
+NEW_REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO_PATH}.git"
+git remote set-url origin "${NEW_REMOTE}"
+```
+**Éxito:** Token se expande correctamente en bash script context
+
+**Resultado:**
+- ✅ Test manual de push: EXITOSO
+- ✅ Branch pushed: scc/issue-1440-bug-header-logo-subtitle-text-overflows-into-nav
+- ✅ Commit: e198c35a
+- ✅ Authentication funciona sin credential helper
+
+**Commits:**
+- `1fa715b` - credential helper global (failed)
+- `6543092` - credential helper worktree (failed)
+- `b0ba8c9` - token in remote URL (success)
+
+**Código Final en worker-entrypoint.sh:**
+```bash
+# After clone/update worktree
+cd "${WORKTREE_PATH}"
+CURRENT_REMOTE=$(git remote get-url origin)
+if [[ ! "${CURRENT_REMOTE}" =~ x-access-token ]]; then
+  REPO_PATH=$(echo "${CURRENT_REMOTE}" | sed -E 's#.*(github\.com[:/])(.+)#\2#' | sed 's/\.git$//')
+  NEW_REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO_PATH}.git"
+  git remote set-url origin "${NEW_REMOTE}"
+  log "INFO: Configured git remote URL with token authentication"
+fi
+```
+
+**Autonomía:** 0% → 100% (git push capability)
+
+---
+
+**Última actualización:** 2026-08-17 13:15 UTC  
+**Worker Version:** ghcr.io/os-santiago/homedir-ai-sdlc/worker:main-b0ba8c9 (en build)
+**Worker Status:** Esperando deployment con iteración #5
 
