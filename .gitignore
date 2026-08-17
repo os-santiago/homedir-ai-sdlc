@@ -15,3 +15,4 @@ target/
 .tmp/
 *.tar
 *.tar.gz
+.git-rewrite/
