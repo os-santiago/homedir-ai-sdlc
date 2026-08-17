@@ -278,9 +278,10 @@ run_scc_prompt() {
     if [[ -n "${SCC_PROFILE}" ]]; then
       scc_args+=(-m "${SCC_PROFILE}")
     fi
-    if [[ -n "${SCC_PERMISSIONS}" ]]; then
-      scc_args+=(--permissions "${SCC_PERMISSIONS}")
-    fi
+    # NOTE: Do NOT use --permissions flag - it conflicts with config.json
+    # sc-agent-cli permissions MUST be configured via ~/.sc-agent/config.json
+    # The --permissions CLI flag overrides config and doesn't work correctly
+    # See: Iteration #1 (config.json required) and Iteration #13 (removed flag)
     # Enable throttling to avoid API rate limits (auto-detects provider-specific delays)
     scc_args+=(--throttle auto)
     scc_args+=(-yq "${prompt}")
