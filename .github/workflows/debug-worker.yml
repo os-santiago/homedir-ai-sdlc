@@ -1,0 +1,44 @@
+name: Debug Worker Status
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_lines:
+        description: 'Number of log lines to retrieve'
+        required: false
+        default: '100'
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check worker status
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Pod Status ==="
+            podman pod ps | grep ai-sdlc
+
+            echo ""
+            echo "=== Worker Container Status ==="
+            podman ps --filter name=ai-sdlc-worker --format 'ID={{.ID}} Status={{.Status}} Created={{.Created}}'
+
+            echo ""
+            echo "=== Worker Heartbeat ==="
+            if [ -f /var/lib/homedir-sdlc/heartbeat.json ]; then
+              cat /var/lib/homedir-sdlc/heartbeat.json | jq '.'
+            else
+              echo "Heartbeat file not found"
+            fi
+
+            echo ""
+            echo "=== Container Logs (last ${{ inputs.log_lines }} lines) ==="
+            podman logs --tail ${{ inputs.log_lines }} ai-sdlc-worker 2>&1
+
+            echo ""
+            echo "=== Recent Activity ==="
+            podman logs --since 15m ai-sdlc-worker 2>&1 | grep -E "(Starting reconcile|claimed|Created PR|ERROR|WARN)" | tail -20 || echo "No recent activity found"
