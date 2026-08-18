@@ -215,6 +215,7 @@ jobs:
               'SCC_TIMEOUT_SECONDS=600' \
               'SCC_CLEAR_HISTORY=true' \
               'HOMEDIR_SDLC_INTERVAL=180' \
+              'HOMEDIR_SDLC_ENABLE_AUTOMERGE=true' \
               "HOMEDIR_SDLC_WORKER_VERSION=${GITHUB_SHA}" \
               > /etc/homedir-sdlc/worker.env
 
