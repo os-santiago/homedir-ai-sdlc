@@ -173,6 +173,79 @@ write_heartbeat() {
   mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
 }
 
+# Enhanced heartbeat with autonomy metrics
+# Called at the end of successful reconciliation cycles
+write_heartbeat_with_metrics() {
+  local status="$1"
+  local detail="$2"
+  local tmp_file
+  mkdir -p "$(dirname "${HEARTBEAT_FILE}")"
+  tmp_file="$(mktemp "${HEARTBEAT_FILE}.XXXXXX")"
+
+  # Calculate metrics from state directory
+  local total_issues=0
+  local total_prs=0
+  local merged_prs=0
+
+  if [[ -d "${ISSUE_STATE_DIR}" ]]; then
+    total_issues=$(find "${ISSUE_STATE_DIR}" -name "issue-*.json" -type f 2>/dev/null | wc -l || echo 0)
+  fi
+
+  if [[ -d "${PR_STATE_DIR}" ]]; then
+    total_prs=$(find "${PR_STATE_DIR}" -name "pr-*.json" -type f 2>/dev/null | wc -l || echo 0)
+    # Count merged PRs (files containing "merged": true)
+    merged_prs=$(find "${PR_STATE_DIR}" -name "pr-*.json" -type f -exec grep -l '"merged".*true' {} \; 2>/dev/null | wc -l || echo 0)
+  fi
+
+  # Calculate autonomy percentage (PRs created / issues processed)
+  local autonomy_rate=0
+  if [[ "${total_issues}" -gt 0 ]]; then
+    autonomy_rate=$(awk "BEGIN {printf \"%.1f\", ($total_prs / $total_issues) * 100}")
+  fi
+
+  # Success rate (merged PRs / total PRs)
+  local success_rate=0
+  if [[ "${total_prs}" -gt 0 ]]; then
+    success_rate=$(awk "BEGIN {printf \"%.1f\", ($merged_prs / $total_prs) * 100}")
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    # Fallback without metrics if jq unavailable
+    printf '{"repo":"%s","status":"%s","detail":"%s","updated_at":"%s"}\n' \
+      "${REPO}" "${status}" "${detail}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      > "${tmp_file}"
+  else
+    jq -n \
+      --arg repo "${REPO}" \
+      --arg status "${status}" \
+      --arg detail "${detail}" \
+      --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg worker_version "${HOMEDIR_SDLC_WORKER_VERSION:-unknown}" \
+      --argjson total_issues "${total_issues}" \
+      --argjson total_prs "${total_prs}" \
+      --argjson merged_prs "${merged_prs}" \
+      --argjson autonomy_rate "${autonomy_rate}" \
+      --argjson success_rate "${success_rate}" \
+      '{
+        repo: $repo,
+        status: $status,
+        detail: $detail,
+        updated_at: $updated_at,
+        worker_version: $worker_version,
+        metrics: {
+          total_issues: $total_issues,
+          total_prs: $total_prs,
+          merged_prs: $merged_prs,
+          autonomy_rate: $autonomy_rate,
+          success_rate: $success_rate,
+          last_calculated: $updated_at
+        }
+      }' \
+      > "${tmp_file}"
+  fi
+  mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+}
+
 # ADEV-compliant complexity classification
 classify_issue_complexity() {
   local body="$1"
@@ -2481,7 +2554,7 @@ main() {
 
   if [[ "${#issues[@]}" -eq 0 || -z "${issues[0]:-}" || "${issues[0]}" == "[]" ]]; then
     log "no eligible issues found"
-    write_heartbeat "ok" "no eligible issues found"
+    write_heartbeat_with_metrics "ok" "no eligible issues found"
     exit 0
   fi
 
@@ -2497,7 +2570,7 @@ main() {
   while IFS= read -r issue_json; do
     run_issue "${issue_json}"
   done < <(jq -c '.[]' <<<"${sorted_issues}")
-  write_heartbeat "ok" "cycle complete"
+  write_heartbeat_with_metrics "ok" "cycle complete"
 }
 
 main "$@"
