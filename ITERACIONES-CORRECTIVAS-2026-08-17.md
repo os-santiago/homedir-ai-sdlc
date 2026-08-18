@@ -1002,3 +1002,21 @@ fi
 - Test E2E #3 retry #5 pending
 - **Confianza:** ALTA - Este es probablemente THE fix definitivo
 
+
+## Deployment Status
+
+**Run**: 32084326714
+**Timestamp**: 2026-08-18T00:24:56Z
+**Commit**: dca2165 (Iteration #13)
+
+### Status
+- Worker Build: SUCCESS ✓
+- Worker Deploy: SUCCESS ✓
+- Container ID: Running (status verified)
+- Heartbeat: Active (updated 2026-08-18T00:24:56Z)
+
+**Fix deployed**: Removed --permissions CLI flag that was overriding config.json autoApprove
+
+### Next Step
+Execute E2E Test #3 retry #5 to validate tool execution with config.json-only permissions
+
