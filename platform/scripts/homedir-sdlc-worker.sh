@@ -32,6 +32,14 @@ else
   log "WARN" "policy-matcher.sh not found"
 fi
 
+# Source enhanced admission functions (SCC-based triage, enrichment, fragmentation)
+if [[ -f "${PLATFORM_DIR}/scripts/enhanced-admission-functions.sh" ]]; then
+  source "${PLATFORM_DIR}/scripts/enhanced-admission-functions.sh"
+else
+  log "WARN" "enhanced-admission-functions.sh not found - enhanced admission disabled"
+  ENHANCED_ADMISSION_ENABLED="false"
+fi
+
 # Load policies only when the function was defined
 if declare -f load_policies &>/dev/null; then
   load_policies || log "WARN" "Running without policy system"
@@ -828,13 +836,238 @@ The worker will wait for legal review before proceeding."
 
     labeler="$(latest_trigger_labeler "${number}")"
     if is_authorized_labeler "${labeler}"; then
-      # ADEV atomicity check before admission
-      local issue_body
+      # Enhanced admission: SCC-based analysis, enrichment, or fragmentation
+      local issue_body issue_title
       issue_body="$(gh issue view "${number}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
-      if check_issue_atomicity "${issue_body}" "${number}"; then
-        admit_issue_to_queue "${number}" "${labeler}"
+      issue_title="$(jq -r '.title' <<<"${issue_json}")"
+
+      # Check if enhanced admission is enabled
+      if [[ "${ENHANCED_ADMISSION_ENABLED}" == "true" ]] && declare -f analyze_issue_quality >/dev/null 2>&1; then
+        log "Using enhanced admission for issue #${number}"
+
+        # Run SCC analysis
+        local analysis_result classification
+        analysis_result=$(analyze_issue_quality "${number}" "${issue_body}" "${issue_title}")
+
+        if [[ $? -ne 0 ]]; then
+          log "ERROR: SCC analysis failed for issue #${number}, falling back to standard admission"
+          # Fallback to standard atomicity check
+          if check_issue_atomicity "${issue_body}" "${number}"; then
+            admit_issue_to_queue "${number}" "${labeler}"
+          else
+            log "Issue #${number} atomicity check failed; not admitting to queue"
+          fi
+          continue
+        fi
+
+        classification=$(echo "${analysis_result}" | jq -r '.classification')
+        log "Issue #${number} classified as: ${classification}"
+
+        case "${classification}" in
+          COMPLETE)
+            # Issue is complete - admit directly
+            log "Issue #${number} is complete, admitting to queue"
+            admit_issue_to_queue "${number}" "${labeler}"
+            ;;
+
+          INCOMPLETE)
+            # Issue is incomplete - enrich it
+            log "Issue #${number} is incomplete, enriching..."
+            local missing_sections
+            missing_sections=$(echo "${analysis_result}" | jq -r '.missing_sections | join(", ")')
+
+            local enriched_body
+            enriched_body=$(enrich_issue "${number}" "${issue_body}" "${missing_sections}" "${issue_title}")
+
+            if [[ $? -ne 0 ]]; then
+              log "ERROR: Enrichment failed for issue #${number}, marking needs-human"
+              add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+              comment_issue "${number}" "❌ **Enrichment Failed**
+
+Unable to automatically enrich this issue. Please add:
+- Clear description of the problem
+- What currently exists (Current state)
+- What should exist (Desired state)
+- Specific steps to verify completion (Acceptance Criteria)
+
+Then remove '${NEEDS_HUMAN_LABEL}' and re-add '${TRIGGER_LABEL}'."
+              continue
+            fi
+
+            # Update issue with enriched body
+            gh issue edit "${number}" --repo "${REPO}" --body "${enriched_body}" 2>&1 | tee -a "${LOGFILE}"
+            add_label "${number}" "${ENRICHED_LABEL}"
+
+            comment_issue "${number}" "🤖 **AI-SDLC Enrichment**
+
+This issue was missing some required sections. I've added:
+- ${missing_sections}
+
+**Please review the updated issue body above and:**
+- ✅ If acceptable: Add label \`${ENRICHMENT_APPROVED_LABEL}\`
+- ✏️ If needs changes: Edit the issue body, then add the approval label
+- ❌ If incorrect: Remove \`${ENRICHED_LABEL}\` and edit manually
+
+The enriched content is based on context from similar issues and repository structure."
+
+            log "Issue #${number} enriched, awaiting user confirmation"
+            ;;
+
+          MULTI_CRITERIA)
+            # Issue has multiple concerns - fragment it
+            log "Issue #${number} is multi-criteria, fragmenting..."
+            local concerns
+            concerns=$(echo "${analysis_result}" | jq -c '.concerns')
+
+            local fragmentation_result
+            fragmentation_result=$(fragment_issue "${number}" "${issue_body}" "${concerns}" "${issue_title}")
+
+            if [[ $? -ne 0 ]]; then
+              log "ERROR: Fragmentation failed for issue #${number}, marking needs-human"
+              add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+              comment_issue "${number}" "❌ **Fragmentation Failed**
+
+This issue appears to have multiple concerns, but I cannot split it automatically.
+
+Please either:
+1. Split manually into separate issues
+2. Simplify to a single concern
+3. Provide clearer acceptance criteria
+
+Then re-submit."
+              continue
+            fi
+
+            # Extract parent and children from fragmentation result
+            local parent_body
+            parent_body=$(echo "${fragmentation_result}" | jq -r '.parent_body')
+
+            # Create children issues
+            local children_json child_numbers child_refs
+            children_json=$(echo "${fragmentation_result}" | jq -c '.children[]')
+            child_numbers=()
+            child_refs=""
+
+            while IFS= read -r child; do
+              local child_order child_title child_body
+              child_order=$(echo "${child}" | jq -r '.order')
+              child_title=$(echo "${child}" | jq -r '.title')
+              child_body=$(echo "${child}" | jq -r '.body')
+
+              # Append parent reference to child body
+              child_body="${child_body}
+
+---
+**Parent Issue:** #${number}
+**Execution Order:** ${child_order}
+**Status:** Awaiting parent approval"
+
+              # Create child issue
+              local child_number
+              child_number=$(gh issue create \
+                --repo "${REPO}" \
+                --title "${child_title}" \
+                --body "${child_body}" \
+                --label "${CHILD_LABEL}" \
+                --json number -q '.number' 2>&1 | tee -a "${LOGFILE}")
+
+              if [[ -n "${child_number}" && "${child_number}" =~ ^[0-9]+$ ]]; then
+                child_numbers+=("${child_number}")
+                child_refs="${child_refs}- [ ] #${child_number} (order: ${child_order})
+"
+                log "Created child issue #${child_number} for parent #${number}"
+              else
+                log "ERROR: Failed to create child issue for parent #${number}"
+              fi
+            done <<< "${children_json}"
+
+            if [[ "${#child_numbers[@]}" -eq 0 ]]; then
+              log "ERROR: No children created for parent #${number}"
+              add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+              comment_issue "${number}" "❌ **Fragmentation Error**
+
+Failed to create child issues. Please split manually."
+              continue
+            fi
+
+            # Replace placeholder child references in parent body
+            local updated_parent_body="${parent_body}"
+            for i in "${!child_numbers[@]}"; do
+              local placeholder="#CHILD_$((i + 1))"
+              updated_parent_body="${updated_parent_body//${placeholder}/#${child_numbers[$i]}}"
+            done
+
+            # Update parent with fragmentation info
+            updated_parent_body="${updated_parent_body}
+
+---
+
+## Child Issues (Execute in order)
+
+${child_refs}
+
+**Status:** Parent awaiting approval
+
+---
+*This is a parent issue. Children will execute sequentially after approval.*"
+
+            gh issue edit "${number}" --repo "${REPO}" --body "${updated_parent_body}" 2>&1 | tee -a "${LOGFILE}"
+            add_label "${number}" "${PARENT_LABEL}"
+            add_label "${number}" "${FRAGMENTATION_LABEL}"
+
+            comment_issue "${number}" "🤖 **AI-SDLC Fragmentation**
+
+This issue contains multiple concerns and has been split into atomic tasks:
+
+${child_refs}
+
+**Please review:**
+- Check that each child issue is correctly scoped
+- Verify execution order is appropriate
+- Edit any child issue if needed
+
+**To proceed:**
+- ✅ If acceptable: Add label \`${FRAGMENTATION_APPROVED_LABEL}\` to THIS issue
+- ✏️ If needs changes: Edit child issues, then add approval label
+- ❌ If incorrect: Close children and re-create manually
+
+Children will execute sequentially in the order above."
+
+            log "Issue #${number} fragmented into ${#child_numbers[@]} children, awaiting approval"
+            ;;
+
+          ERROR)
+            # Cannot process - needs human
+            log "Issue #${number} cannot be processed automatically"
+            add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+            local reasoning
+            reasoning=$(echo "${analysis_result}" | jq -r '.reasoning // "Unable to analyze"')
+            comment_issue "${number}" "❌ **Admission Error**
+
+${reasoning}
+
+This issue requires human review before it can be processed.
+
+Please clarify the requirements and resubmit."
+            ;;
+
+          *)
+            log "ERROR: Unknown classification '${classification}' for issue #${number}"
+            # Fallback to standard atomicity check
+            if check_issue_atomicity "${issue_body}" "${number}"; then
+              admit_issue_to_queue "${number}" "${labeler}"
+            else
+              log "Issue #${number} atomicity check failed; not admitting to queue"
+            fi
+            ;;
+        esac
       else
-        log "Issue #${number} atomicity check failed; not admitting to queue"
+        # Enhanced admission disabled - use standard atomicity check
+        if check_issue_atomicity "${issue_body}" "${number}"; then
+          admit_issue_to_queue "${number}" "${labeler}"
+        else
+          log "Issue #${number} atomicity check failed; not admitting to queue"
+        fi
       fi
     else
       reject_issue_from_queue "${number}" "${labeler}"
@@ -2541,6 +2774,14 @@ main() {
 
   log "checking eligible issues in ${REPO}"
   write_heartbeat "running" "checking eligible issues"
+
+  # Enhanced admission reconciliations
+  if [[ "${ENHANCED_ADMISSION_ENABLED}" == "true" ]]; then
+    reconcile_enrichment_approvals
+    reconcile_fragmentation_approvals
+    reconcile_parent_executions
+  fi
+
   reconcile_stuck_admission_reviews
   reconcile_admission_requests
   mapfile -t issues < <(
