@@ -35,6 +35,123 @@ Para que un issue entre al flujo autónomo, debe tener **ambos** labels:
 **Type:** [bug|feature|enhancement|test]
 ```
 
+## 🤖 Enhanced Admission (Auto-Enriquecimiento y Fragmentación)
+
+**Novedad 2026-08-19**: El sistema ahora puede **automáticamente** mejorar issues incompletos o dividir issues complejos.
+
+### 3 Caminos Inteligentes
+
+Cuando creas un issue con labels `ready-to-implement` + `priority:P3`, el sistema AI-SDLC lo analiza y toma una de 3 rutas:
+
+#### ✅ Camino 1: Issue Completo (Directo a Implementación)
+
+Si tu issue tiene todas las secciones requeridas y es atómico:
+```
+ready-to-implement → Análisis SCC → ✅ COMPLETE → scc-accepted → implementación
+```
+
+**No se requiere acción adicional** - el issue procede directamente.
+
+#### 📝 Camino 2: Issue Incompleto (Auto-Enriquecimiento)
+
+Si tu issue le faltan secciones pero es atómico (un solo problema):
+```
+ready-to-implement → Análisis SCC → INCOMPLETE → SCC enriquece → 
+scc-enriched → ✅ Usuario confirma → scc-accepted → implementación
+```
+
+**Ejemplo**:
+```markdown
+Antes: "Fix the login"
+
+Después del auto-enriquecimiento:
+**Description:** Fix login button not responding on mobile (viewport < 768px)
+**Current state:** Button doesn't respond to clicks on mobile Safari/Chrome
+**Desired state:** Button triggers authentication on all devices
+**Acceptance Criteria:**
+- [ ] Button clickable on mobile Safari
+- [ ] Button clickable on mobile Chrome
+- [ ] Authentication flow completes
+**Complexity:** simple
+**Priority:** P3
+**Type:** bug
+
+---
+📝 Enriched by AI-SDLC Admission. Please review.
+```
+
+**Tu acción requerida**:
+1. Revisa el issue actualizado
+2. Si es correcto: añade label `scc-enrichment-approved`
+3. Si necesita cambios: edita el body, luego añade el label
+4. El sistema procede automáticamente después de tu aprobación
+
+#### 🔀 Camino 3: Multi-Criterio (Auto-Fragmentación)
+
+Si tu issue tiene múltiples problemas no relacionados:
+```
+ready-to-implement → Análisis SCC → MULTI_CRITERIA → SCC fragmenta → 
+scc-parent + children → ✅ Usuario aprueba → ejecución secuencial →
+validación → close parent
+```
+
+**Ejemplo Issue #1389** (multi-criterio):
+```markdown
+Original: "Establecer wip-pr label en AGENTS.md, PR template, CONTRIBUTING.md, workflows..."
+
+Después de fragmentación:
+Parent #1389: "Establish wip-pr convention (Parent)"
+├─ Child #1501: Create AGENTS.md (order: 1) - ⏳
+├─ Child #1502: Update PR template (order: 2) - ⏳
+├─ Child #1503: Update agent configs (order: 3) - ⏳
+└─ Child #1504: Update SDLC docs (order: 4) - ⏳
+```
+
+**Tu acción requerida**:
+1. Revisa el parent y todos los children creados
+2. Edita cualquier child si es necesario
+3. Si es correcto: añade label `scc-fragmentation-approved` al parent
+4. Los children se ejecutan **secuencialmente** (orden 1 → 2 → 3 → 4)
+5. El parent trackea progreso automáticamente:
+   ```
+   - [x] ✅ #1501 (completado)
+   - [x] 🔄 #1502 (en progreso)
+   - [ ] ⏳ #1503 (pendiente)
+   - [ ] ⏳ #1504 (pendiente)
+   ```
+
+### Labels del Enhanced Admission
+
+Nuevos labels que verás durante el proceso:
+
+| Label | Significado | Acción Requerida |
+|-------|-------------|------------------|
+| `scc-enriched` | Issue enriquecido por SCC | Revisar y aprobar con `scc-enrichment-approved` |
+| `scc-enrichment-approved` | Enriquecimiento aprobado | Ninguna (añadir TÚ este label) |
+| `scc-parent` | Issue parent con children | Revisar children |
+| `scc-child` | Issue hijo de un parent | Ninguna (procesado automáticamente) |
+| `scc-fragmentation` | Fragmentación propuesta | Revisar y aprobar con `scc-fragmentation-approved` |
+| `scc-fragmentation-approved` | Fragmentación aprobada | Ninguna (añadir TÚ este label) |
+| `scc-parent-executing` | Parent ejecutando children | Ninguna (esperar completación) |
+| `scc-parent-validated` | Parent validado | Ninguna (se cierra automático) |
+
+### ¿Qué Pasa si No Quiero Auto-Enriquecimiento?
+
+Si prefieres escribir el issue completo desde el inicio:
+1. Usa el formato completo (ver sección anterior)
+2. El sistema lo clasificará como `COMPLETE`
+3. Procederá directamente sin enriquecimiento
+
+**El auto-enriquecimiento solo ocurre si faltan secciones.**
+
+### ¿Qué Pasa si Rechazo el Enriquecimiento?
+
+Si el enriquecimiento es incorrecto:
+1. **NO** añadas `scc-enrichment-approved`
+2. Edita el issue body manualmente con la información correcta
+3. Añade el label `scc-enrichment-approved` después de editar
+4. O remueve `scc-enriched` y escribe desde cero
+
 ## 📝 Ejemplos
 
 ### Ejemplo 1: Bug Fix Simple
@@ -430,12 +547,86 @@ El worker añade este label cuando:
 gh pr view <number> --json autoMergeRequest,statusCheckRollup
 ```
 
+### Issue Marcado `scc-enriched` (Enriquecimiento)
+
+El worker detectó que el issue le faltan secciones y lo enriqueció automáticamente.
+
+**Qué hacer**:
+1. Revisa el issue body actualizado (verás las secciones añadidas)
+2. Si es correcto: `gh issue edit <number> --add-label "scc-enrichment-approved"`
+3. Si necesita cambios: Edita el body, luego añade el label
+4. Si es completamente incorrecto: 
+   ```bash
+   gh issue edit <number> --remove-label "scc-enriched"
+   # Edita manualmente y re-añade ready-to-implement
+   ```
+
+**Timeline**: El worker esperará indefinidamente tu aprobación.
+
+### Issue Marcado `scc-parent` (Fragmentación)
+
+El worker detectó múltiples problemas no relacionados y creó children atómicos.
+
+**Qué hacer**:
+1. Revisa el issue parent (verás lista de children)
+2. Revisa cada child issue creado (#XXXX, #YYYY, etc.)
+3. Edita cualquier child si necesario
+4. Si todo correcto: `gh issue edit <number> --add-label "scc-fragmentation-approved"`
+5. Si incorrecto:
+   ```bash
+   # Cerrar children incorrectos
+   gh issue close <child-number>
+   # Editar o crear children manualmente
+   # Re-añadir label de aprobación al parent
+   ```
+
+**Después de aprobación**:
+- Los children se ejecutarán **secuencialmente** (orden 1, 2, 3...)
+- El parent mostrará progreso en tiempo real
+- Cuando todos completen, el parent se valida y cierra automáticamente
+
+### Child Issue Falló Durante Ejecución
+
+Si un child recibe label `scc-failed` o `needs-human`:
+
+**El parent se pausa automáticamente** con label `needs-human`.
+
+**Opciones**:
+1. **Arreglar el child manualmente**:
+   - Implementa los cambios del child manualmente
+   - Crea PR y mergea
+   - Cierra el child con label `scc-merged`
+   - El worker continuará con siguiente child
+
+2. **Saltar el child** (si no es crítico):
+   - Comenta en el parent: `skip #<child-number>`
+   - El worker marcará el child como skipped y continuará
+
+3. **Abortar el parent completo**:
+   - Cierra el parent issue manualmente
+   - Cierra todos los children pendientes
+
+### Parent Validation Failed
+
+Si todos los children completan pero el parent no valida:
+
+**Causas**:
+- Algunos children no cubrieron todos los criterios del parent
+- Hay gaps en la implementación colectiva
+
+**Solución**:
+1. Revisa el comentario de validación (indica qué falta)
+2. Crea child adicional para cubrir el gap
+3. O acepta como-está cerrando el parent manualmente
+
 ---
 
 ## 📚 Recursos Adicionales
 
+- **Enhanced Admission Design**: `docs/ENHANCED-ADMISSION-DESIGN.md` (especificación completa)
 - **Políticas de Auto-Approval**: `platform/config/autonomous-decision-policy.yaml` (241 políticas)
 - **Worker Script**: `platform/scripts/homedir-sdlc-worker.sh`
+- **Enhanced Admission Functions**: `platform/scripts/enhanced-admission-functions.sh`
 - **Documentación Completa**: `docs/AUTONOMY-ACHIEVEMENT.md`
 - **Configuración CLAUDE.md**: `CLAUDE.md`
 
