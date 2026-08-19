@@ -1,8 +1,5 @@
 package io.opensourcesantiago.aisdlc.observability;
 
-import io.opensourcesantiago.aisdlc.util.AdminUtils;
-import io.quarkus.security.Authenticated;
-import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -11,19 +8,13 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
 import java.io.IOException;
-import java.time.Instant;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @Path("/api/sdlc")
-@Authenticated
 public class SdlcApiResource {
-  private static final Map<String, Window> WINDOWS = new ConcurrentHashMap<>();
   @Inject SdlcObservabilityService service;
   @Inject SdlcDashboardSnapshot snapshot;
-  @Inject SecurityIdentity identity;
 
   @ConfigProperty(name = "sdlc.dashboard.controls-enabled", defaultValue = "false")
   boolean controlsEnabled;
@@ -132,7 +123,7 @@ public class SdlcApiResource {
     if (action == null || !action.matches("pause|resume|reconcile|clear-locks"))
       return Response.status(400).entity(Map.of("error", "unsupported action")).build();
     try {
-      return Response.ok(service.control(action, identity.getPrincipal().getName())).build();
+      return Response.ok(service.control(action, "anonymous")).build();
     } catch (IllegalArgumentException e) {
       return Response.status(400).entity(Map.of("error", e.getMessage())).build();
     } catch (IOException e) {
@@ -149,21 +140,13 @@ public class SdlcApiResource {
   }
 
   private boolean authorized(boolean manage) {
-    return manage
-        ? AdminUtils.canManageAdminBackoffice(identity)
-        : AdminUtils.canViewAdminBackoffice(identity);
+    // Public dashboard - no authentication required
+    return true;
   }
 
   private boolean checkRateLimit() {
-    String key = identity.getPrincipal().getName();
-    Window w =
-        WINDOWS.compute(
-            key,
-            (k, old) ->
-                old == null || old.started.plusSeconds(60).isBefore(Instant.now())
-                    ? new Window()
-                    : old);
-    return w.requests.incrementAndGet() <= 300;
+    // Public dashboard - no rate limiting
+    return true;
   }
 
   private Response forbidden() {
@@ -174,10 +157,5 @@ public class SdlcApiResource {
 
   private Response tooManyRequests() {
     return Response.status(429).entity(Map.of("error", "rate limit exceeded")).build();
-  }
-
-  private static final class Window {
-    final Instant started = Instant.now();
-    final AtomicInteger requests = new AtomicInteger();
   }
 }
