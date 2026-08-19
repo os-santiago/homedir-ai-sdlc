@@ -61,6 +61,9 @@ Respond ONLY with JSON (no extra text):
     "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1)
   rc=$?
 
+  # Strip ANSI color codes that SCC may emit
+  response=$(echo "${response}" | sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[0m//g')
+
   # Log response for debugging (first 1000 chars)
   log "SCC admission analysis response (first 1000 chars): ${response:0:1000}"
 
@@ -175,8 +178,11 @@ End with the standard sections in the format shown above."
   export SCC_ACTUAL_TIMEOUT="${SCC_ENRICHMENT_TIMEOUT}"
 
   enriched_body=$(cd "${WORKDIR}" && timeout "${SCC_ENRICHMENT_TIMEOUT}s" \
-    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1 | tee -a "${LOGFILE}")
+    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1)
   rc=$?
+
+  # Strip ANSI color codes
+  enriched_body=$(echo "${enriched_body}" | sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[0m//g')
 
   if [[ "${rc}" -ne 0 ]]; then
     log "ERROR: SCC enrichment failed for issue #${issue_number} (exit code ${rc})"
@@ -273,8 +279,11 @@ Children with lower order numbers will execute first. Use order to express depen
   export SCC_ACTUAL_TIMEOUT="${SCC_FRAGMENTATION_TIMEOUT}"
 
   response=$(cd "${WORKDIR}" && timeout "${SCC_FRAGMENTATION_TIMEOUT}s" \
-    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1 | tee -a "${LOGFILE}")
+    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1)
   rc=$?
+
+  # Strip ANSI color codes
+  response=$(echo "${response}" | sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[0m//g')
 
   if [[ "${rc}" -ne 0 ]]; then
     log "ERROR: SCC fragmentation failed for issue #${issue_number} (exit code ${rc})"
@@ -481,8 +490,11 @@ Be strict but fair - all parent criteria must be fully met by the collective chi
   export SCC_ACTUAL_TIMEOUT="${SCC_VALIDATION_TIMEOUT}"
 
   response=$(cd "${WORKDIR}" && timeout "${SCC_VALIDATION_TIMEOUT}s" \
-    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1 | tee -a "${LOGFILE}")
+    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1)
   rc=$?
+
+  # Strip ANSI color codes
+  response=$(echo "${response}" | sed 's/\x1b\[[0-9;]*m//g' | sed 's/\[0m//g')
 
   if [[ "${rc}" -ne 0 ]]; then
     log "ERROR: SCC validation failed for parent #${parent_number} (exit code ${rc})"
