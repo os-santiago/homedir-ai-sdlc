@@ -10,7 +10,13 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 # Minimal logger for early init (overridden by full log() below)
-log() { echo "[$1] $2"; }
+log() {
+  if [[ $# -eq 2 ]]; then
+    echo "[$1] $2"
+  else
+    echo "[INFO] $*"
+  fi
+}
 
 # ============================================================================
 # POLICY SYSTEM INTEGRATION
