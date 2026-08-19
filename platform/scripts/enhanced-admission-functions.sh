@@ -33,46 +33,21 @@ analyze_issue_quality() {
 
   log "analyze_issue_quality: analyzing issue #${issue_number}"
 
-  local prompt="You are analyzing a GitHub issue for the AI-SDLC admission process.
+  local prompt="Analyze this GitHub issue for AI-SDLC admission.
 
-**Issue #${issue_number}: ${issue_title}**
+Issue #${issue_number}: ${issue_title}
 
-**Issue Body:**
+Body:
 ${issue_body}
 
-**Required Format:**
-An issue must have these sections to be COMPLETE:
-- **Description:** Clear problem statement
-- **Current state:** What exists now (files, behavior, etc.)
-- **Desired state:** What should exist after implementation
-- **Acceptance Criteria:** Specific, verifiable checklist (at least 2 items)
-- **Complexity:** simple|medium|complex
-- **Priority:** P1|P2|P3
-- **Type:** bug|feature|documentation|enhancement|test
+Classify as ONE of:
+1. COMPLETE - Has all required sections (Description, Current state, Desired state, Acceptance Criteria with 2+ items, Complexity, Priority, Type), criteria are specific, and is ATOMIC (single concern)
+2. INCOMPLETE - Missing sections or vague criteria, but is ATOMIC
+3. MULTI_CRITERIA - Multiple UNRELATED concerns (e.g. \"Fix login AND add dark mode AND update docs\" = 3 separate issues)
+4. ERROR - Cannot process
 
-**ADEV Atomicity Principle:**
-An issue is ATOMIC if it addresses ONE concern. Multiple unrelated acceptance criteria or changes to unrelated subsystems = NOT atomic = MULTI_CRITERIA.
-
-Examples:
-- ATOMIC: \"Fix login button on mobile\" (one concern)
-- NOT ATOMIC: \"Fix login, add dark mode, update docs\" (3 concerns)
-
-**Analyze and classify this issue:**
-
-1. **COMPLETE**: Has ALL required sections, criteria are specific and verifiable, is ATOMIC (single concern)
-2. **INCOMPLETE**: Missing sections OR vague criteria, but IS ATOMIC (single concern) - can be enriched
-3. **MULTI_CRITERIA**: Multiple UNRELATED concerns (violates ADEV) - needs fragmentation into separate issues
-4. **ERROR**: Cannot be processed (completely unclear, contradictory, requires human judgment)
-
-**Output ONLY this JSON, no additional text:**
-{
-  \"classification\": \"COMPLETE|INCOMPLETE|MULTI_CRITERIA|ERROR\",
-  \"reasoning\": \"Brief explanation of why this classification\",
-  \"missing_sections\": [\"list of missing required sections, if INCOMPLETE\"],
-  \"criteria_issues\": [\"list of problems with acceptance criteria, if any\"],
-  \"concerns\": [\"list of distinct concerns, if MULTI_CRITERIA\"],
-  \"confidence\": 0.0-1.0
-}"
+Respond ONLY with JSON (no extra text):
+{\"classification\":\"COMPLETE|INCOMPLETE|MULTI_CRITERIA|ERROR\",\"reasoning\":\"why\",\"missing_sections\":[],\"criteria_issues\":[],\"concerns\":[],\"confidence\":0.9}"
 
   local response
   local rc
@@ -80,23 +55,61 @@ Examples:
   # Use custom timeout for admission analysis
   export SCC_ACTUAL_TIMEOUT="${SCC_ADMISSION_ANALYSIS_TIMEOUT}"
 
+  log "Running SCC admission analysis for issue #${issue_number} (timeout: ${SCC_ADMISSION_ANALYSIS_TIMEOUT}s)"
+
   response=$(cd "${WORKDIR}" && timeout "${SCC_ADMISSION_ANALYSIS_TIMEOUT}s" \
-    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1 | tee -a "${LOGFILE}")
+    "${SCC_BIN}" chat --clear -m "${SCC_PROFILE}" --throttle auto -yq "${prompt}" 2>&1)
   rc=$?
 
-  if [[ "${rc}" -ne 0 ]]; then
+  # Log response for debugging (first 1000 chars)
+  log "SCC admission analysis response (first 1000 chars): ${response:0:1000}"
+
+  if [[ "${rc}" -eq 124 ]]; then
+    log "ERROR: SCC admission analysis timed out for issue #${issue_number} after ${SCC_ADMISSION_ANALYSIS_TIMEOUT}s"
+    echo '{"classification":"ERROR","reasoning":"SCC analysis timed out","missing_sections":[],"criteria_issues":[],"concerns":[],"confidence":0.0}'
+    return 1
+  elif [[ "${rc}" -ne 0 ]]; then
     log "ERROR: SCC admission analysis failed for issue #${issue_number} (exit code ${rc})"
     echo '{"classification":"ERROR","reasoning":"SCC analysis failed","missing_sections":[],"criteria_issues":[],"concerns":[],"confidence":0.0}'
     return 1
   fi
 
   # Extract JSON from response (in case SCC adds extra text)
+  # Try to find JSON block - look for opening { and closing }
   local json_response
-  json_response=$(echo "${response}" | grep -o '{.*}' | head -1)
+
+  # Method 1: Try to extract JSON using sed (handles multiline)
+  json_response=$(echo "${response}" | sed -n '/{/,/}/p' | tr -d '\n' | sed 's/.*\({.*}\).*/\1/')
+
+  # Method 2: Fallback - try jq to validate and extract
+  if [[ -z "${json_response}" ]] || ! echo "${json_response}" | jq empty 2>/dev/null; then
+    # Try to find JSON with python
+    json_response=$(echo "${response}" | python3 -c "
+import sys, json, re
+text = sys.stdin.read()
+# Find JSON object
+match = re.search(r'\{[^}]*\"classification\"[^}]*\}', text, re.DOTALL)
+if match:
+    try:
+        obj = json.loads(match.group(0))
+        print(json.dumps(obj))
+    except:
+        pass
+" 2>/dev/null)
+  fi
 
   if [[ -z "${json_response}" ]]; then
     log "ERROR: No JSON response from SCC admission analysis for issue #${issue_number}"
+    log "SCC raw output (first 500 chars): ${response:0:500}"
     echo '{"classification":"ERROR","reasoning":"No JSON in SCC response","missing_sections":[],"criteria_issues":[],"concerns":[],"confidence":0.0}'
+    return 1
+  fi
+
+  # Validate JSON
+  if ! echo "${json_response}" | jq empty 2>/dev/null; then
+    log "ERROR: Invalid JSON from SCC admission analysis for issue #${issue_number}"
+    log "Attempted JSON: ${json_response:0:200}"
+    echo '{"classification":"ERROR","reasoning":"Invalid JSON in SCC response","missing_sections":[],"criteria_issues":[],"concerns":[],"confidence":0.0}'
     return 1
   fi
 
