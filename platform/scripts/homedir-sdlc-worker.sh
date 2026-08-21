@@ -175,6 +175,7 @@ write_heartbeat() {
       "${REPO}" "${status}" "${detail}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       > "${tmp_file}"
     mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+    chmod 644 "${HEARTBEAT_FILE}" 2>/dev/null || true
     return 0
   fi
   jq -n \
@@ -185,6 +186,7 @@ write_heartbeat() {
     '{repo: $repo, status: $status, detail: $detail, updated_at: $updated_at}' \
     > "${tmp_file}"
   mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+  chmod 644 "${HEARTBEAT_FILE}" 2>/dev/null || true
 }
 
 # Enhanced heartbeat with autonomy metrics
@@ -258,6 +260,7 @@ write_heartbeat_with_metrics() {
       > "${tmp_file}"
   fi
   mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+  chmod 644 "${HEARTBEAT_FILE}" 2>/dev/null || true
 }
 
 # ADEV-compliant complexity classification
