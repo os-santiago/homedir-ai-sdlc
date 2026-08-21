@@ -1,0 +1,51 @@
+name: Setup Heartbeat Permissions Cron
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup cron job to fix heartbeat permissions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Creating permission fix script ==="
+            cat > /usr/local/bin/fix-heartbeat-permissions.sh << 'EOF'
+            #!/bin/bash
+            # Fix heartbeat permissions for dashboard to read
+            chmod 644 /var/lib/homedir-sdlc/heartbeat.json 2>/dev/null || true
+            chmod 644 /var/lib/homedir-sdlc/*.json 2>/dev/null || true
+            chmod 644 /var/lib/homedir-sdlc/run-summaries/* 2>/dev/null || true
+            EOF
+
+            chmod +x /usr/local/bin/fix-heartbeat-permissions.sh
+
+            echo ""
+            echo "=== Setting up cron job (every 2 minutes) ==="
+            (crontab -l 2>/dev/null | grep -v "fix-heartbeat-permissions"; echo "*/2 * * * * /usr/local/bin/fix-heartbeat-permissions.sh") | crontab -
+
+            echo ""
+            echo "=== Verifying cron job ==="
+            crontab -l | grep fix-heartbeat
+
+            echo ""
+            echo "=== Running once now ==="
+            /usr/local/bin/fix-heartbeat-permissions.sh
+
+            echo ""
+            echo "=== Verifying permissions ==="
+            ls -lh /var/lib/homedir-sdlc/heartbeat.json
+
+            echo ""
+            echo "=== Restarting dashboard to re-read heartbeat ==="
+            podman restart ai-sdlc-dashboard
+            sleep 10
+
+            echo ""
+            echo "✅ Cron job setup complete!"
