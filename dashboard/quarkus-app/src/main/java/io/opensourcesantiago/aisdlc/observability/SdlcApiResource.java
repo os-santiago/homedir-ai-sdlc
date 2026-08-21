@@ -30,13 +30,15 @@ public class SdlcApiResource {
   @GET
   @Path("status")
   public Response status() {
-    return read(snapshot.get().get("status"));
+    // Use direct file-based service instead of snapshot for compatibility with bash worker
+    return read(service.status());
   }
 
   @GET
   @Path("heartbeat")
   public Response heartbeat() {
-    return read(((Map<?, ?>) snapshot.get().get("status")).get("worker"));
+    // Use direct file-based service instead of snapshot for compatibility with bash worker
+    return read(service.heartbeat());
   }
 
   @GET
