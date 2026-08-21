@@ -27,8 +27,8 @@ jobs:
             chmod +x /usr/local/bin/fix-heartbeat-permissions.sh
 
             echo ""
-            echo "=== Setting up cron job (every 2 minutes) ==="
-            (crontab -l 2>/dev/null | grep -v "fix-heartbeat-permissions"; echo "*/2 * * * * /usr/local/bin/fix-heartbeat-permissions.sh") | crontab -
+            echo "=== Setting up cron job (every minute) ==="
+            (crontab -l 2>/dev/null | grep -v "fix-heartbeat-permissions"; echo "* * * * * /usr/local/bin/fix-heartbeat-permissions.sh") | crontab -
 
             echo ""
             echo "=== Verifying cron job ==="
