@@ -1,0 +1,130 @@
+# Default values for ai-sdlc-worker
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/os-santiago/homedir-ai-sdlc/worker
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# Worker configuration
+config:
+  # Target repository
+  repo: "os-santiago/homedir"
+
+  # Labels
+  triggerLabel: "ready-to-implement"
+  queueLabel: "scc-queued"
+  rejectedLabel: "scc-rejected"
+  runningLabel: "scc-running"
+  prLabel: "scc-pr-open"
+  approvedLabel: "scc-approved"
+  mergedLabel: "scc-merged"
+  failedLabel: "scc-failed"
+  needsHumanLabel: "needs-human"
+
+  # Reconciliation interval (seconds)
+  reconcileInterval: 180
+
+  # Max issues per run
+  maxIssuesPerRun: 1
+
+  # SCC configuration
+  scc:
+    timeoutSeconds: 600
+    clearHistory: true
+    profile: "nvidia"
+    permissions: "unlimited"
+
+  # Auto-merge
+  autoMerge:
+    enabled: true
+
+  # Enhanced features
+  enhancedAdmission:
+    enabled: true
+
+  enhancedValidation:
+    enabled: true
+
+  codeRabbit:
+    enabled: true
+
+# Environment variables from secrets
+env:
+  - name: GH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: ai-sdlc-secrets
+        key: gh-token
+
+  - name: NVIDIA_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: ai-sdlc-secrets
+        key: nvidia-api-key
+
+# Persistent volumes
+persistence:
+  # State directory
+  state:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /var/lib/homedir-sdlc
+
+  # Git worktrees
+  worktrees:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 20Gi
+    mountPath: /srv/homedir-sdlc/worktrees
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "4"
+    memory: 4Gi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
