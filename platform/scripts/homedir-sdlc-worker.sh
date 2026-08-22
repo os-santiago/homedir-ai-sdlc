@@ -46,6 +46,16 @@ else
   ENHANCED_ADMISSION_ENABLED="false"
 fi
 
+# Source enhanced validation functions (Phases 2-4: validation, enrichment, feedback)
+if [[ -f "${PLATFORM_DIR}/scripts/enhanced-validation-functions.sh" ]]; then
+  source "${PLATFORM_DIR}/scripts/enhanced-validation-functions.sh"
+  ENHANCED_VALIDATION_ENABLED="true"
+  log "Enhanced validation, enrichment, and feedback functions loaded"
+else
+  log "WARN" "enhanced-validation-functions.sh not found - enhanced validation disabled"
+  ENHANCED_VALIDATION_ENABLED="false"
+fi
+
 # Load policies only when the function was defined
 if declare -f load_policies &>/dev/null; then
   load_policies || log "WARN" "Running without policy system"
@@ -620,7 +630,47 @@ mark_failed() {
   remove_label "${issue}" "${UNDER_REVIEW_LABEL}"
   remove_label "${issue}" "${COVERAGE_GAP_LABEL}"
   remove_label "${issue}" "${APPROVED_LABEL}"
-  comment_issue "${issue}" "Autonomous SDLC failed: ${reason}"
+
+  # ============================================================================
+  # PHASE 4: FAILURE TRACKING AND EDUCATIONAL FEEDBACK
+  # ============================================================================
+  if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]]; then
+    # Track failure pattern
+    if declare -f track_success_pattern >/dev/null 2>&1; then
+      local issue_body
+      issue_body="$(gh issue view "${issue}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
+      track_success_pattern "${issue}" "false" "${issue_body}"
+      log "Tracked failure pattern for issue #${issue}"
+    fi
+
+    # Generate educational feedback based on failure reason
+    if declare -f generate_failure_explanation >/dev/null 2>&1; then
+      local failure_type=""
+      if echo "${reason}" | grep -qi "timeout"; then
+        failure_type="SCC_TIMEOUT"
+      elif echo "${reason}" | grep -qi "validation"; then
+        failure_type="VALIDATION_COMMAND_FAILED"
+      elif echo "${reason}" | grep -qi "complexity"; then
+        failure_type="COMPLEXITY_MISMATCH"
+      else
+        failure_type="GENERAL_FAILURE"
+      fi
+
+      local failure_explanation
+      failure_explanation=$(generate_failure_explanation "${issue}" "${failure_type}" "${issue_body}")
+
+      comment_issue "${issue}" "${failure_explanation}
+
+---
+
+**Original failure reason**: ${reason}"
+      log "Posted educational failure explanation for issue #${issue}"
+    fi
+  else
+    # Fallback to simple comment
+    comment_issue "${issue}" "Autonomous SDLC failed: ${reason}"
+  fi
+
   alert FAIL "Issue #${issue} failed" "${reason}"
 }
 
@@ -849,6 +899,77 @@ The worker will wait for legal review before proceeding."
       local issue_body issue_title
       issue_body="$(gh issue view "${number}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
       issue_title="$(jq -r '.title' <<<"${issue_json}")"
+
+      # ============================================================================
+      # PHASE 2: TEMPLATE VALIDATION (Pre-flight checks)
+      # ============================================================================
+      if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]] && declare -f validate_template_fields >/dev/null 2>&1; then
+        log "Running Phase 2 template validation for issue #${number}"
+
+        local validation_errors
+        if ! validation_errors=$(validate_template_fields "${number}" "${issue_body}" 2>&1); then
+          log "Template validation failed for issue #${number}"
+
+          # Generate educational feedback (Phase 4)
+          local failure_explanation
+          if declare -f generate_failure_explanation >/dev/null 2>&1; then
+            failure_explanation=$(generate_failure_explanation "${number}" "TEMPLATE_VALIDATION_FAILED" "${issue_body}")
+            comment_issue "${number}" "${failure_explanation}"
+          else
+            comment_issue "${number}" "❌ **Template Validation Failed**
+
+${validation_errors}
+
+Please update the issue to include all required fields and re-add the \`${TRIGGER_LABEL}\` label."
+          fi
+
+          add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+          add_label "${number}" "${REJECTED_LABEL}"
+          remove_label "${number}" "${TRIGGER_LABEL}"
+          log "Issue #${number} rejected due to template validation failures"
+          continue
+        fi
+
+        log "Template validation passed for issue #${number}"
+
+        # PHASE 3: AUTO-ENRICHMENT (if needed)
+        if declare -f auto_enrich_issue >/dev/null 2>&1; then
+          log "Attempting auto-enrichment for issue #${number}"
+          local enrichments
+          if enrichments=$(auto_enrich_issue "${number}" "${issue_body}" "${issue_title}"); then
+            log "Auto-enrichment suggestions generated for issue #${number}"
+            comment_issue "${number}" "🤖 **AI-SDLC Auto-Enrichment Suggestions**
+
+${enrichments}
+
+_These are suggestions based on automated analysis. Please review and update if needed._"
+          fi
+        fi
+
+        # Pre-flight validation
+        if declare -f pre_flight_validation >/dev/null 2>&1; then
+          log "Running pre-flight validation for issue #${number}"
+          local preflight_result
+          preflight_result=$(pre_flight_validation "${number}" "${issue_body}")
+
+          local validation_passed
+          validation_passed=$(echo "${preflight_result}" | jq -r '.validation_passed')
+
+          if [[ "${validation_passed}" == "false" ]]; then
+            log "Pre-flight validation warnings for issue #${number}"
+            local warnings
+            warnings=$(echo "${preflight_result}" | jq -r '.warnings[]' | sed 's/^/- /')
+
+            comment_issue "${number}" "⚠️ **Pre-flight Validation Warnings**
+
+${warnings}
+
+The issue will proceed, but these warnings may affect success rate. Consider updating the issue."
+          else
+            log "Pre-flight validation passed for issue #${number}"
+          fi
+        fi
+      fi
 
       # Check if enhanced admission is enabled
       if [[ "${ENHANCED_ADMISSION_ENABLED}" == "true" ]] && declare -f analyze_issue_quality >/dev/null 2>&1; then
@@ -2231,6 +2352,33 @@ finalize_merged_issue() {
   add_label "${number}" "${MERGED_LABEL}"
   remove_terminal_labels "${number}"
   append_run_summary "${number}" "completed" "${pr_number}" "" "PR #${pr_number} merged at ${merged_at} (${merge_sha}) and production release verification succeeded. ${release_url}"
+
+  # ============================================================================
+  # PHASE 4: SUCCESS TRACKING AND EDUCATIONAL FEEDBACK
+  # ============================================================================
+  if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]]; then
+    # Track success pattern
+    if declare -f track_success_pattern >/dev/null 2>&1; then
+      local issue_body
+      issue_body="$(gh issue view "${number}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
+      track_success_pattern "${number}" "true" "${issue_body}"
+      log "Tracked success pattern for issue #${number}"
+    fi
+
+    # Post educational success comment
+    if declare -f post_success_pattern_comment >/dev/null 2>&1; then
+      local success_metrics="- **E2E Time**: Merge at ${merged_at}
+- **PR**: #${pr_number}
+- **Release**: ${release_url}"
+
+      local success_comment
+      success_comment=$(post_success_pattern_comment "${number}" "${success_metrics}")
+
+      comment_issue "${number}" "${success_comment}"
+      log "Posted success pattern comment for issue #${number}"
+    fi
+  fi
+
   comment_issue "${number}" "Autonomous SDLC completed: PR #${pr_number} was merged (${pr_url}) at ${merged_at}. Merge commit: \`${merge_sha}\`. Production release succeeded: ${release_url}"
   gh issue close "${number}" --repo "${REPO}" --comment "Closed by autonomous SDLC after PR #${pr_number} was merged and production release verification succeeded. Release: ${release_url}" >/dev/null 2>&1 || true
   log "closed issue #${number} via PR #${pr_number}; release verified"
@@ -2820,6 +2968,12 @@ main() {
   while IFS= read -r issue_json; do
     run_issue "${issue_json}"
   done < <(jq -c '.[]' <<<"${sorted_issues}")
+
+  # Analyze success patterns periodically (once per cycle)
+  if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]] && declare -f analyze_success_patterns >/dev/null 2>&1; then
+    analyze_success_patterns
+  fi
+
   write_heartbeat_with_metrics "ok" "cycle complete"
 }
 
