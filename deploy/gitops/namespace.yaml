@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homedir-ai-sdlc
+  labels:
+    name: homedir-ai-sdlc
+    app.kubernetes.io/part-of: homedir-ai-sdlc
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
