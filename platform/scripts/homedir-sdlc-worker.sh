@@ -56,6 +56,16 @@ else
   ENHANCED_VALIDATION_ENABLED="false"
 fi
 
+# Source CodeRabbit integration functions
+if [[ -f "${PLATFORM_DIR}/scripts/coderabbit-integration.sh" ]]; then
+  source "${PLATFORM_DIR}/scripts/coderabbit-integration.sh"
+  CODERABBIT_INTEGRATION_ENABLED="true"
+  log "CodeRabbit integration functions loaded"
+else
+  log "WARN" "coderabbit-integration.sh not found - CodeRabbit integration disabled"
+  CODERABBIT_INTEGRATION_ENABLED="false"
+fi
+
 # Load policies only when the function was defined
 if declare -f load_policies &>/dev/null; then
   load_policies || log "WARN" "Running without policy system"
@@ -1913,6 +1923,17 @@ build_remediation_prompt() {
   local checks_json="$5"
   local reviews_json="$6"
   local trigger="$7"
+  local pr_number="${8:-}"
+
+  # Extract CodeRabbit feedback if available
+  local coderabbit_feedback=""
+  if [[ "${CODERABBIT_INTEGRATION_ENABLED}" == "true" && -n "${pr_number}" ]]; then
+    local coderabbit_comments
+    coderabbit_comments=$(extract_coderabbit_comments "${pr_number}" 2>/dev/null || echo '[]')
+    if format_coderabbit_feedback "${coderabbit_comments}" >/dev/null 2>&1; then
+      coderabbit_feedback=$(format_coderabbit_feedback "${coderabbit_comments}")
+    fi
+  fi
 
   cat <<EOF
 Continue the autonomous SDLC remediation for ${REPO} issue #${issue}.
@@ -1934,10 +1955,23 @@ $(jq -r '.' <<<"${checks_json}")
 
 Review or coverage context:
 $(jq -r '.' <<<"${reviews_json}")
+EOF
+
+  # Add CodeRabbit feedback section if available
+  if [[ -n "${coderabbit_feedback}" ]]; then
+    cat <<EOF
+
+Code Quality Feedback from CodeRabbit:
+${coderabbit_feedback}
+EOF
+  fi
+
+  cat <<EOF
 
 Rules:
 - Stay on branch ${branch}; never push directly to main.
 - Fix only the failing checks or actionable review feedback shown above.
+- If CodeRabbit feedback is present, apply the suggestions to improve code quality while keeping changes minimal.
 - If the trigger is a coverage gap, update the implementation and PR body so the section named ## Issue Coverage truthfully maps code changes to the issue request and acceptance criteria.
 - If the implementation is incomplete, make the missing code, test, workflow, or documentation changes instead of only describing them.
 - If only the PR body is incomplete, update it directly with gh pr edit so the coverage section contains checked, evidence-backed items.
@@ -1979,7 +2013,7 @@ run_scc_on_existing_pr() {
   prepare_workdir
   git -C "${WORKDIR}" checkout -B "${branch}" "origin/${branch}"
 
-  prompt="$(build_remediation_prompt "${issue}" "${title}" "${branch}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}")"
+  prompt="$(build_remediation_prompt "${issue}" "${title}" "${branch}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}" "${pr_number}")"
   if run_scc_with_timeout_handling "${prompt}"; then
     :
   else
@@ -2036,6 +2070,13 @@ run_scc_on_existing_pr() {
       mark_failed "${issue}" "Git push failed during remediation for branch ${branch}."
       return 0
     fi
+  fi
+
+  # If this was CodeRabbit remediation, add resolution notes
+  if [[ "${CODERABBIT_INTEGRATION_ENABLED}" == "true" && "${trigger}" == *"CodeRabbit"* ]]; then
+    local commit_sha
+    commit_sha=$(git -C "${WORKDIR}" rev-parse HEAD)
+    resolve_coderabbit_comments "${pr_number}" "${commit_sha}" 2>/dev/null || log "WARN: could not add CodeRabbit resolution notes"
   fi
 
   update_issue_state "${issue}" '.remediation_attempts = ((.remediation_attempts // 0) + 1) | .last_remediation_at = $updated_at'
@@ -2225,6 +2266,23 @@ reconcile_pr_state() {
     update_issue_state "${issue}" '.last_pr_state = "under-review" | .last_checked_at = $updated_at'
     run_scc_on_existing_pr "${issue}" "${issue_title}" "${branch}" "${pr_number}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}"
     return 0
+  fi
+
+  # Check for CodeRabbit comments that need to be addressed
+  if [[ "${CODERABBIT_INTEGRATION_ENABLED}" == "true" ]]; then
+    if needs_coderabbit_remediation "${pr_number}" 2>/dev/null; then
+      local last_coderabbit_sha
+      last_coderabbit_sha="$(jq -r '.last_coderabbit_remediation_sha // ""' "${state_file}")"
+
+      # Only trigger remediation if we haven't already addressed this SHA
+      if [[ "${last_coderabbit_sha}" != "${pr_sha}" ]]; then
+        trigger="CodeRabbit code quality suggestions on PR #${pr_number}"
+        set_flow_labels "${issue}" "${PR_LABEL}" "${UNDER_REVIEW_LABEL}"
+        LAST_CODERABBIT_SHA="${pr_sha}" update_issue_state "${issue}" '.last_pr_state = "coderabbit-review" | .last_coderabbit_remediation_sha = env.LAST_CODERABBIT_SHA | .last_checked_at = $updated_at'
+        run_scc_on_existing_pr "${issue}" "${issue_title}" "${branch}" "${pr_number}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}"
+        return 0
+      fi
+    fi
   fi
 
   if [[ "${coverage_passed}" != "true" ]]; then
