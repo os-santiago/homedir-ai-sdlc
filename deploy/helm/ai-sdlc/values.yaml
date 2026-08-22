@@ -1,0 +1,192 @@
+# Default values for ai-sdlc umbrella chart
+# This chart deploys both worker and dashboard components
+
+global:
+  # Container image registry
+  imageRegistry: ghcr.io
+  imagePullPolicy: IfNotPresent
+
+  # Namespace for all components
+  namespace: homedir-ai-sdlc
+
+  # Common labels applied to all resources
+  labels:
+    app.kubernetes.io/part-of: homedir-ai-sdlc
+    app.kubernetes.io/managed-by: helm
+
+# Worker component configuration
+worker:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/os-santiago/homedir-ai-sdlc/worker
+    tag: latest
+
+  # Worker reconciliation interval (seconds)
+  reconcileInterval: 180
+
+  # SCC configuration
+  scc:
+    timeoutSeconds: 600
+    clearHistory: true
+    profile: nvidia
+
+  # Auto-merge configuration
+  autoMerge:
+    enabled: true
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+
+  # Persistent volume for state
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 10Gi
+
+  # Git worktrees volume
+  worktrees:
+    enabled: true
+    storageClass: ""
+    size: 20Gi
+
+# Dashboard component configuration
+dashboard:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/os-santiago/homedir-ai-sdlc/dashboard
+    tag: latest
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8080
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: homedir-ai-sdlc.opensourcesantiago.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: ai-sdlc-dashboard-tls
+        hosts:
+          - homedir-ai-sdlc.opensourcesantiago.io
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Secrets (should be managed via external-secrets or sealed-secrets)
+secrets:
+  # GitHub token for API access (required)
+  ghToken: ""
+
+  # Nvidia API key for SCC (required)
+  nvidiaApiKey: ""
+
+  # External secrets configuration
+  externalSecrets:
+    enabled: false
+    backend: vault
+    vaultPath: secret/data/ai-sdlc
+
+# Network policies
+networkPolicies:
+  enabled: true
+  # Allow worker to access GitHub API
+  allowEgress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+
+# Pod security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+  prometheusRule:
+    enabled: true
+    rules:
+      - alert: WorkerNotProcessingIssues
+        expr: rate(ai_sdlc_issues_processed_total[10m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI-SDLC worker has not processed any issues in 30 minutes"
+
+      - alert: WorkerHighFailureRate
+        expr: rate(ai_sdlc_issues_failed_total[5m]) / rate(ai_sdlc_issues_total[5m]) > 0.5
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI-SDLC worker failure rate above 50%"
+
+      - alert: DashboardDown
+        expr: up{job="ai-sdlc-dashboard"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI-SDLC dashboard is down"
+
+# Autoscaling (future)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

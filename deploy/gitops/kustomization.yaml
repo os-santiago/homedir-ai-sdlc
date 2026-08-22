@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: homedir-ai-sdlc
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+
+helmCharts:
+  - name: ai-sdlc
+    repo: oci://ghcr.io/os-santiago/helm-charts
+    version: 1.0.0
+    releaseName: ai-sdlc
+    namespace: homedir-ai-sdlc
+    valuesFile: values.yaml
+    includeCRDs: true
+
+commonLabels:
+  app.kubernetes.io/part-of: homedir-ai-sdlc
+  app.kubernetes.io/managed-by: argocd
+
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "1"

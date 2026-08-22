@@ -1,0 +1,112 @@
+# GitOps values for AI-SDLC Helm Chart
+# This file is managed by ArgoCD
+
+worker:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/os-santiago/homedir-ai-sdlc/worker
+    tag: latest
+    pullPolicy: Always
+
+  config:
+    repo: "os-santiago/homedir"
+    reconcileInterval: 180
+    maxIssuesPerRun: 1
+
+    scc:
+      timeoutSeconds: 600
+      clearHistory: true
+      profile: nvidia
+
+    autoMerge:
+      enabled: true
+
+    enhancedAdmission:
+      enabled: true
+
+    enhancedValidation:
+      enabled: true
+
+    codeRabbit:
+      enabled: true
+
+  persistence:
+    state:
+      enabled: true
+      size: 10Gi
+      storageClass: "longhorn"
+
+    worktrees:
+      enabled: true
+      size: 20Gi
+      storageClass: "longhorn"
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+
+dashboard:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/os-santiago/homedir-ai-sdlc/dashboard
+    tag: latest
+    pullPolicy: Always
+
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: homedir-ai-sdlc.opensourcesantiago.io
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: ai-sdlc-dashboard-tls
+        hosts:
+          - homedir-ai-sdlc.opensourcesantiago.io
+
+  persistence:
+    enabled: true
+    # Share worker's state PVC (read-only)
+    existingClaim: "ai-sdlc-worker-state"
+    readOnly: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Secrets managed via External Secrets
+secrets:
+  externalSecrets:
+    enabled: true
+    backend: vault
+    vaultPath: secret/data/ai-sdlc
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+  prometheusRule:
+    enabled: true
+
+# Network policies
+networkPolicies:
+  enabled: true

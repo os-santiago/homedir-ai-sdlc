@@ -1,0 +1,35 @@
+{{- if .Values.persistence.state.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "worker.fullname" . }}-state
+  labels:
+    {{- include "worker.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.state.accessMode }}
+  {{- if .Values.persistence.state.storageClass }}
+  storageClassName: {{ .Values.persistence.state.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.state.size }}
+{{- end }}
+---
+{{- if .Values.persistence.worktrees.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "worker.fullname" . }}-worktrees
+  labels:
+    {{- include "worker.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.worktrees.accessMode }}
+  {{- if .Values.persistence.worktrees.storageClass }}
+  storageClassName: {{ .Values.persistence.worktrees.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.worktrees.size }}
+{{- end }}
