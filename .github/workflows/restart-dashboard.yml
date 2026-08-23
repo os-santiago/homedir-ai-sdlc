@@ -1,0 +1,40 @@
+name: Restart Dashboard
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart dashboard container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Fixing heartbeat permissions first ==="
+            chmod 644 /var/lib/homedir-sdlc/heartbeat.json
+            chmod 644 /var/lib/homedir-sdlc/*.json 2>/dev/null || true
+
+            echo ""
+            echo "=== Restarting dashboard container ==="
+            podman restart ai-sdlc-dashboard
+
+            echo ""
+            echo "=== Waiting for dashboard to be healthy ==="
+            sleep 15
+
+            echo ""
+            echo "=== Dashboard Status ==="
+            podman ps --filter name=ai-sdlc-dashboard --format 'Status={{.Status}}'
+
+            echo ""
+            echo "=== Testing dashboard health ==="
+            DASHBOARD_IP=$(podman pod inspect ai-sdlc --format '{{.InfraContainerID}}' | xargs podman inspect --format '{{.NetworkSettings.IPAddress}}')
+            curl -f http://${DASHBOARD_IP}:8080/q/health/live && echo "✅ Dashboard healthy" || echo "⚠️  Dashboard not healthy yet"
+
+            echo ""
+            echo "✅ Dashboard restarted"
