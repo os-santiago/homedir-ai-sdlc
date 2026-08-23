@@ -1,0 +1,46 @@
+name: Debug Worker Heartbeat
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check worker and heartbeat
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Worker Container Status ==="
+            podman ps --filter name=ai-sdlc-worker --format 'ID={{.ID}} Status={{.Status}} Image={{.Image}}'
+
+            echo ""
+            echo "=== Worker Logs (last 30 lines) ==="
+            podman logs --tail 30 ai-sdlc-worker
+
+            echo ""
+            echo "=== Heartbeat File ==="
+            if [ -f /var/lib/homedir-sdlc/heartbeat.json ]; then
+              echo "File exists:"
+              ls -lh /var/lib/homedir-sdlc/heartbeat.json
+              echo ""
+              echo "Content:"
+              cat /var/lib/homedir-sdlc/heartbeat.json
+              echo ""
+              echo "Permissions:"
+              stat /var/lib/homedir-sdlc/heartbeat.json
+            else
+              echo "❌ Heartbeat file NOT found at /var/lib/homedir-sdlc/heartbeat.json"
+            fi
+
+            echo ""
+            echo "=== State Directory Contents ==="
+            ls -lah /var/lib/homedir-sdlc/ | head -20
+
+            echo ""
+            echo "=== Dashboard can read? ==="
+            podman exec ai-sdlc-dashboard cat /var/lib/homedir-sdlc/heartbeat.json 2>&1 || echo "Dashboard cannot read heartbeat file"
