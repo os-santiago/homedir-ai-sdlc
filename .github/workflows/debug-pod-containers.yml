@@ -1,0 +1,36 @@
+name: Debug Pod Containers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all containers in pod
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== All Containers in ai-sdlc Pod ==="
+            podman ps --pod --filter pod=ai-sdlc --format 'Name={{.Names}} ID={{.ID}} Status={{.Status}} Image={{.Image}}'
+
+            echo ""
+            echo "=== Pod Details ==="
+            podman pod inspect ai-sdlc | jq '.Containers[] | {Name: .Name, Id: .Id}'
+
+            echo ""
+            echo "=== Heartbeat File ==="
+            ls -lh /var/lib/homedir-sdlc/heartbeat.json
+            cat /var/lib/homedir-sdlc/heartbeat.json | jq '.'
+
+            echo ""
+            echo "=== Check if any process is writing heartbeat ==="
+            lsof /var/lib/homedir-sdlc/heartbeat.json 2>&1 || echo "No process currently has the file open"
+
+            echo ""
+            echo "=== Recent modifications to heartbeat ==="
+            stat /var/lib/homedir-sdlc/heartbeat.json
