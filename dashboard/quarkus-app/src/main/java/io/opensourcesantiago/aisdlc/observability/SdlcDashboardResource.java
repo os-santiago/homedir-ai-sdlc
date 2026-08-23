@@ -1,10 +1,7 @@
 package io.opensourcesantiago.aisdlc.observability;
 
-import io.opensourcesantiago.aisdlc.util.AdminUtils;
 import io.quarkus.qute.Location;
 import io.quarkus.qute.Template;
-import io.quarkus.security.Authenticated;
-import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -14,10 +11,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 @Path("/sdlc/dashboard")
-@Authenticated
 public class SdlcDashboardResource {
-  @Inject SecurityIdentity identity;
-
   @Inject
   @Location("sdlc/dashboard/index.qute.html")
   Template dashboard;
@@ -25,9 +19,7 @@ public class SdlcDashboardResource {
   @GET
   @Produces(MediaType.TEXT_HTML)
   public Object dashboard() {
-    if (!AdminUtils.canViewAdminBackoffice(identity)) {
-      return Response.status(Response.Status.FORBIDDEN).build();
-    }
+    // Public dashboard - no authentication required
     CacheControl cc = new CacheControl();
     cc.setNoStore(true);
     return Response.ok(dashboard.instance()).cacheControl(cc).build();

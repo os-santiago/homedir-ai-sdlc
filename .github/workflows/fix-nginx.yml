@@ -1,0 +1,43 @@
+name: Fix Nginx Configuration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix-nginx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update nginx configuration
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Updating nginx configuration ==="
+
+            # Update proxy_pass to point to localhost:8081 (the pod port)
+            sudo sed -i 's|proxy_pass http://[0-9.]*:[0-9]*;|proxy_pass http://localhost:8081;|g' \
+              /etc/nginx/sites-available/homedir-ai-sdlc.conf
+
+            echo "New configuration:"
+            sudo grep proxy_pass /etc/nginx/sites-available/homedir-ai-sdlc.conf
+
+            # Test configuration
+            echo ""
+            echo "Testing nginx configuration..."
+            sudo nginx -t
+
+            # Reload nginx
+            echo ""
+            echo "Reloading nginx..."
+            sudo systemctl reload nginx
+
+            echo ""
+            echo "✅ Nginx configuration updated and reloaded"
+
+            # Test endpoint
+            echo ""
+            echo "Testing dashboard endpoint..."
+            curl -f http://localhost:8081/q/health/live || echo "Dashboard not responding yet"
