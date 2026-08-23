@@ -151,6 +151,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          no-cache: true
           cache-from: type=registry,ref=${{ env.IMAGE_DASHBOARD }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_DASHBOARD }}:buildcache,mode=max
 
@@ -215,6 +216,7 @@ jobs:
               'SCC_TIMEOUT_SECONDS=600' \
               'SCC_CLEAR_HISTORY=true' \
               'HOMEDIR_SDLC_INTERVAL=180' \
+              'HOMEDIR_SDLC_ENABLE_AUTOMERGE=true' \
               "HOMEDIR_SDLC_WORKER_VERSION=${GITHUB_SHA}" \
               > /etc/homedir-sdlc/worker.env
 

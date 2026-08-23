@@ -1,0 +1,36 @@
+name: Debug Dashboard Container
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check dashboard container files
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Dashboard Container Status ==="
+            podman ps --filter name=ai-sdlc-dashboard --format 'ID={{.ID}} Status={{.Status}} Image={{.Image}}'
+
+            echo ""
+            echo "=== Check HTML file inside container ==="
+            podman exec ai-sdlc-dashboard tail -15 /app/resources/templates/sdlc/dashboard/index.qute.html
+
+            echo ""
+            echo "=== Check for merge conflict markers ==="
+            if podman exec ai-sdlc-dashboard grep -q "<<<<<<< HEAD" /app/resources/templates/sdlc/dashboard/index.qute.html; then
+              echo "❌ MERGE CONFLICT MARKERS FOUND!"
+              podman exec ai-sdlc-dashboard grep -B2 -A2 "<<<<<<< HEAD" /app/resources/templates/sdlc/dashboard/index.qute.html
+            else
+              echo "✅ No merge conflict markers found"
+            fi
+
+            echo ""
+            echo "=== Dashboard logs (last 20 lines) ==="
+            podman logs --tail 20 ai-sdlc-dashboard
