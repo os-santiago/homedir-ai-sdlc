@@ -1,0 +1,55 @@
+name: Force Dashboard Recreate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  recreate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Force recreate dashboard container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Stopping and removing old dashboard container ==="
+            podman stop ai-sdlc-dashboard || true
+            podman rm ai-sdlc-dashboard || true
+
+            echo ""
+            echo "=== Removing old dashboard images (force cache clear) ==="
+            podman rmi ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest || true
+
+            echo ""
+            echo "=== Pulling fresh dashboard image ==="
+            podman pull ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest
+
+            echo ""
+            echo "=== Starting new dashboard container ==="
+            podman run -d \
+              --pod ai-sdlc \
+              --name ai-sdlc-dashboard \
+              --restart unless-stopped \
+              -e HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc \
+              -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc:ro \
+              ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest
+
+            echo ""
+            echo "=== Waiting for container to be healthy ==="
+            sleep 10
+
+            echo ""
+            echo "=== Dashboard Status ==="
+            podman ps --filter name=ai-sdlc-dashboard --format 'ID={{.ID}} Status={{.Status}} Image={{.Image}}'
+
+            echo ""
+            echo "=== Test dashboard health endpoint ==="
+            DASHBOARD_IP=$(podman pod inspect ai-sdlc --format '{{.InfraContainerID}}' | xargs podman inspect --format '{{.NetworkSettings.IPAddress}}')
+            echo "Dashboard IP: $DASHBOARD_IP"
+            curl -f http://${DASHBOARD_IP}:8080/q/health/live || echo "Not healthy yet"
+
+            echo ""
+            echo "✅ Dashboard recreated successfully"

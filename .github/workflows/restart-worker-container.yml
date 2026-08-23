@@ -1,0 +1,57 @@
+name: Restart Worker Container
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restart worker container with new image
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Stopping worker container ==="
+            podman stop ai-sdlc-worker || true
+
+            echo ""
+            echo "=== Removing old worker container ==="
+            podman rm ai-sdlc-worker || true
+
+            echo ""
+            echo "=== Removing old worker image (force fresh pull) ==="
+            podman rmi ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest || true
+
+            echo ""
+            echo "=== Pulling fresh worker image ==="
+            podman pull ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest
+
+            echo ""
+            echo "=== Recreating worker container ==="
+            podman run -d \
+              --pod ai-sdlc \
+              --name ai-sdlc-worker \
+              --restart unless-stopped \
+              --env-file /root/.config/homedir-sdlc/worker.env \
+              -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
+              -v /srv/homedir-sdlc:/srv/homedir-sdlc \
+              ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest
+
+            echo ""
+            echo "=== Waiting for worker to start ==="
+            sleep 15
+
+            echo ""
+            echo "=== Worker Status ==="
+            podman ps --filter name=ai-sdlc-worker --format 'ID={{.ID}} Status={{.Status}} Image={{.Image}}'
+
+            echo ""
+            echo "=== Worker logs (last 20 lines) ==="
+            podman logs --tail 20 ai-sdlc-worker 2>&1
+
+            echo ""
+            echo "✅ Worker container restarted with fresh image"
