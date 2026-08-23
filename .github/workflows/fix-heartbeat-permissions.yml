@@ -1,0 +1,38 @@
+name: Fix Heartbeat Permissions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fix heartbeat file permissions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Current Permissions ==="
+            ls -lh /var/lib/homedir-sdlc/heartbeat.json
+
+            echo ""
+            echo "=== Fixing permissions ==="
+            chmod 644 /var/lib/homedir-sdlc/heartbeat.json
+
+            echo ""
+            echo "=== New Permissions ==="
+            ls -lh /var/lib/homedir-sdlc/heartbeat.json
+
+            echo ""
+            echo "=== Testing dashboard can read ==="
+            podman exec ai-sdlc-dashboard cat /var/lib/homedir-sdlc/heartbeat.json && echo "✅ Dashboard can read heartbeat!" || echo "❌ Dashboard still cannot read"
+
+            echo ""
+            echo "=== Also fix permissions for all state files ==="
+            chmod 644 /var/lib/homedir-sdlc/*.json 2>/dev/null || true
+            chmod 644 /var/lib/homedir-sdlc/run-summaries/* 2>/dev/null || true
+
+            echo "✅ Permissions fixed"

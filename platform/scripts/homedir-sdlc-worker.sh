@@ -10,7 +10,13 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 # Minimal logger for early init (overridden by full log() below)
-log() { echo "[$1] $2"; }
+log() {
+  if [[ $# -eq 2 ]]; then
+    echo "[$1] $2"
+  else
+    echo "[INFO] $*"
+  fi
+}
 
 # ============================================================================
 # POLICY SYSTEM INTEGRATION
@@ -30,6 +36,34 @@ if [[ -f "${PLATFORM_DIR}/scripts/policy-matcher.sh" ]]; then
   source "${PLATFORM_DIR}/scripts/policy-matcher.sh"
 else
   log "WARN" "policy-matcher.sh not found"
+fi
+
+# Source enhanced admission functions (SCC-based triage, enrichment, fragmentation)
+if [[ -f "${PLATFORM_DIR}/scripts/enhanced-admission-functions.sh" ]]; then
+  source "${PLATFORM_DIR}/scripts/enhanced-admission-functions.sh"
+else
+  log "WARN" "enhanced-admission-functions.sh not found - enhanced admission disabled"
+  ENHANCED_ADMISSION_ENABLED="false"
+fi
+
+# Source enhanced validation functions (Phases 2-4: validation, enrichment, feedback)
+if [[ -f "${PLATFORM_DIR}/scripts/enhanced-validation-functions.sh" ]]; then
+  source "${PLATFORM_DIR}/scripts/enhanced-validation-functions.sh"
+  ENHANCED_VALIDATION_ENABLED="true"
+  log "Enhanced validation, enrichment, and feedback functions loaded"
+else
+  log "WARN" "enhanced-validation-functions.sh not found - enhanced validation disabled"
+  ENHANCED_VALIDATION_ENABLED="false"
+fi
+
+# Source CodeRabbit integration functions
+if [[ -f "${PLATFORM_DIR}/scripts/coderabbit-integration.sh" ]]; then
+  source "${PLATFORM_DIR}/scripts/coderabbit-integration.sh"
+  CODERABBIT_INTEGRATION_ENABLED="true"
+  log "CodeRabbit integration functions loaded"
+else
+  log "WARN" "coderabbit-integration.sh not found - CodeRabbit integration disabled"
+  CODERABBIT_INTEGRATION_ENABLED="false"
 fi
 
 # Load policies only when the function was defined
@@ -161,6 +195,7 @@ write_heartbeat() {
       "${REPO}" "${status}" "${detail}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
       > "${tmp_file}"
     mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+    chmod 644 "${HEARTBEAT_FILE}" 2>/dev/null || true
     return 0
   fi
   jq -n \
@@ -171,6 +206,81 @@ write_heartbeat() {
     '{repo: $repo, status: $status, detail: $detail, updated_at: $updated_at}' \
     > "${tmp_file}"
   mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+  chmod 644 "${HEARTBEAT_FILE}" 2>/dev/null || true
+}
+
+# Enhanced heartbeat with autonomy metrics
+# Called at the end of successful reconciliation cycles
+write_heartbeat_with_metrics() {
+  local status="$1"
+  local detail="$2"
+  local tmp_file
+  mkdir -p "$(dirname "${HEARTBEAT_FILE}")"
+  tmp_file="$(mktemp "${HEARTBEAT_FILE}.XXXXXX")"
+
+  # Calculate metrics from state directory
+  local total_issues=0
+  local total_prs=0
+  local merged_prs=0
+
+  if [[ -d "${ISSUE_STATE_DIR}" ]]; then
+    total_issues=$(find "${ISSUE_STATE_DIR}" -name "issue-*.json" -type f 2>/dev/null | wc -l || echo 0)
+  fi
+
+  if [[ -d "${PR_STATE_DIR}" ]]; then
+    total_prs=$(find "${PR_STATE_DIR}" -name "pr-*.json" -type f 2>/dev/null | wc -l || echo 0)
+    # Count merged PRs (files containing "merged": true)
+    merged_prs=$(find "${PR_STATE_DIR}" -name "pr-*.json" -type f -exec grep -l '"merged".*true' {} \; 2>/dev/null | wc -l || echo 0)
+  fi
+
+  # Calculate autonomy percentage (PRs created / issues processed)
+  local autonomy_rate=0
+  if [[ "${total_issues}" -gt 0 ]]; then
+    autonomy_rate=$(awk "BEGIN {printf \"%.1f\", ($total_prs / $total_issues) * 100}")
+  fi
+
+  # Success rate (merged PRs / total PRs)
+  local success_rate=0
+  if [[ "${total_prs}" -gt 0 ]]; then
+    success_rate=$(awk "BEGIN {printf \"%.1f\", ($merged_prs / $total_prs) * 100}")
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    # Fallback without metrics if jq unavailable
+    printf '{"repo":"%s","status":"%s","detail":"%s","updated_at":"%s"}\n' \
+      "${REPO}" "${status}" "${detail}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      > "${tmp_file}"
+  else
+    jq -n \
+      --arg repo "${REPO}" \
+      --arg status "${status}" \
+      --arg detail "${detail}" \
+      --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg worker_version "${HOMEDIR_SDLC_WORKER_VERSION:-unknown}" \
+      --argjson total_issues "${total_issues}" \
+      --argjson total_prs "${total_prs}" \
+      --argjson merged_prs "${merged_prs}" \
+      --argjson autonomy_rate "${autonomy_rate}" \
+      --argjson success_rate "${success_rate}" \
+      '{
+        repo: $repo,
+        status: $status,
+        detail: $detail,
+        updated_at: $updated_at,
+        worker_version: $worker_version,
+        metrics: {
+          total_issues: $total_issues,
+          total_prs: $total_prs,
+          merged_prs: $merged_prs,
+          autonomy_rate: $autonomy_rate,
+          success_rate: $success_rate,
+          last_calculated: $updated_at
+        }
+      }' \
+      > "${tmp_file}"
+  fi
+  mv -f "${tmp_file}" "${HEARTBEAT_FILE}"
+  chmod 644 "${HEARTBEAT_FILE}" 2>/dev/null || true
 }
 
 # ADEV-compliant complexity classification
@@ -530,7 +640,47 @@ mark_failed() {
   remove_label "${issue}" "${UNDER_REVIEW_LABEL}"
   remove_label "${issue}" "${COVERAGE_GAP_LABEL}"
   remove_label "${issue}" "${APPROVED_LABEL}"
-  comment_issue "${issue}" "Autonomous SDLC failed: ${reason}"
+
+  # ============================================================================
+  # PHASE 4: FAILURE TRACKING AND EDUCATIONAL FEEDBACK
+  # ============================================================================
+  if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]]; then
+    # Track failure pattern
+    if declare -f track_success_pattern >/dev/null 2>&1; then
+      local issue_body
+      issue_body="$(gh issue view "${issue}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
+      track_success_pattern "${issue}" "false" "${issue_body}"
+      log "Tracked failure pattern for issue #${issue}"
+    fi
+
+    # Generate educational feedback based on failure reason
+    if declare -f generate_failure_explanation >/dev/null 2>&1; then
+      local failure_type=""
+      if echo "${reason}" | grep -qi "timeout"; then
+        failure_type="SCC_TIMEOUT"
+      elif echo "${reason}" | grep -qi "validation"; then
+        failure_type="VALIDATION_COMMAND_FAILED"
+      elif echo "${reason}" | grep -qi "complexity"; then
+        failure_type="COMPLEXITY_MISMATCH"
+      else
+        failure_type="GENERAL_FAILURE"
+      fi
+
+      local failure_explanation
+      failure_explanation=$(generate_failure_explanation "${issue}" "${failure_type}" "${issue_body}")
+
+      comment_issue "${issue}" "${failure_explanation}
+
+---
+
+**Original failure reason**: ${reason}"
+      log "Posted educational failure explanation for issue #${issue}"
+    fi
+  else
+    # Fallback to simple comment
+    comment_issue "${issue}" "Autonomous SDLC failed: ${reason}"
+  fi
+
   alert FAIL "Issue #${issue} failed" "${reason}"
 }
 
@@ -755,13 +905,309 @@ The worker will wait for legal review before proceeding."
 
     labeler="$(latest_trigger_labeler "${number}")"
     if is_authorized_labeler "${labeler}"; then
-      # ADEV atomicity check before admission
-      local issue_body
+      # Enhanced admission: SCC-based analysis, enrichment, or fragmentation
+      local issue_body issue_title
       issue_body="$(gh issue view "${number}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
-      if check_issue_atomicity "${issue_body}" "${number}"; then
-        admit_issue_to_queue "${number}" "${labeler}"
+      issue_title="$(jq -r '.title' <<<"${issue_json}")"
+
+      # ============================================================================
+      # PHASE 2: TEMPLATE VALIDATION (Pre-flight checks)
+      # ============================================================================
+      if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]] && declare -f validate_template_fields >/dev/null 2>&1; then
+        log "Running Phase 2 template validation for issue #${number}"
+
+        local validation_errors
+        if ! validation_errors=$(validate_template_fields "${number}" "${issue_body}" 2>&1); then
+          log "Template validation failed for issue #${number}"
+
+          # Generate educational feedback (Phase 4)
+          local failure_explanation
+          if declare -f generate_failure_explanation >/dev/null 2>&1; then
+            failure_explanation=$(generate_failure_explanation "${number}" "TEMPLATE_VALIDATION_FAILED" "${issue_body}")
+            comment_issue "${number}" "${failure_explanation}"
+          else
+            comment_issue "${number}" "❌ **Template Validation Failed**
+
+${validation_errors}
+
+Please update the issue to include all required fields and re-add the \`${TRIGGER_LABEL}\` label."
+          fi
+
+          add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+          add_label "${number}" "${REJECTED_LABEL}"
+          remove_label "${number}" "${TRIGGER_LABEL}"
+          log "Issue #${number} rejected due to template validation failures"
+          continue
+        fi
+
+        log "Template validation passed for issue #${number}"
+
+        # PHASE 3: AUTO-ENRICHMENT (if needed)
+        if declare -f auto_enrich_issue >/dev/null 2>&1; then
+          log "Attempting auto-enrichment for issue #${number}"
+          local enrichments
+          if enrichments=$(auto_enrich_issue "${number}" "${issue_body}" "${issue_title}"); then
+            log "Auto-enrichment suggestions generated for issue #${number}"
+            comment_issue "${number}" "🤖 **AI-SDLC Auto-Enrichment Suggestions**
+
+${enrichments}
+
+_These are suggestions based on automated analysis. Please review and update if needed._"
+          fi
+        fi
+
+        # Pre-flight validation
+        if declare -f pre_flight_validation >/dev/null 2>&1; then
+          log "Running pre-flight validation for issue #${number}"
+          local preflight_result
+          preflight_result=$(pre_flight_validation "${number}" "${issue_body}")
+
+          local validation_passed
+          validation_passed=$(echo "${preflight_result}" | jq -r '.validation_passed')
+
+          if [[ "${validation_passed}" == "false" ]]; then
+            log "Pre-flight validation warnings for issue #${number}"
+            local warnings
+            warnings=$(echo "${preflight_result}" | jq -r '.warnings[]' | sed 's/^/- /')
+
+            comment_issue "${number}" "⚠️ **Pre-flight Validation Warnings**
+
+${warnings}
+
+The issue will proceed, but these warnings may affect success rate. Consider updating the issue."
+          else
+            log "Pre-flight validation passed for issue #${number}"
+          fi
+        fi
+      fi
+
+      # Check if enhanced admission is enabled
+      if [[ "${ENHANCED_ADMISSION_ENABLED}" == "true" ]] && declare -f analyze_issue_quality >/dev/null 2>&1; then
+        log "Using enhanced admission for issue #${number}"
+
+        # Run SCC analysis
+        local analysis_result classification
+        analysis_result=$(analyze_issue_quality "${number}" "${issue_body}" "${issue_title}")
+
+        if [[ $? -ne 0 ]]; then
+          log "ERROR: SCC analysis failed for issue #${number}, falling back to standard admission"
+          # Fallback to standard atomicity check
+          if check_issue_atomicity "${issue_body}" "${number}"; then
+            admit_issue_to_queue "${number}" "${labeler}"
+          else
+            log "Issue #${number} atomicity check failed; not admitting to queue"
+          fi
+          continue
+        fi
+
+        classification=$(echo "${analysis_result}" | jq -r '.classification')
+        log "Issue #${number} classified as: ${classification}"
+
+        case "${classification}" in
+          COMPLETE)
+            # Issue is complete - admit directly
+            log "Issue #${number} is complete, admitting to queue"
+            admit_issue_to_queue "${number}" "${labeler}"
+            ;;
+
+          INCOMPLETE)
+            # Issue is incomplete - enrich it
+            log "Issue #${number} is incomplete, enriching..."
+            local missing_sections
+            missing_sections=$(echo "${analysis_result}" | jq -r '.missing_sections | join(", ")')
+
+            local enriched_body
+            enriched_body=$(enrich_issue "${number}" "${issue_body}" "${missing_sections}" "${issue_title}")
+
+            if [[ $? -ne 0 ]]; then
+              log "ERROR: Enrichment failed for issue #${number}, marking needs-human"
+              add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+              comment_issue "${number}" "❌ **Enrichment Failed**
+
+Unable to automatically enrich this issue. Please add:
+- Clear description of the problem
+- What currently exists (Current state)
+- What should exist (Desired state)
+- Specific steps to verify completion (Acceptance Criteria)
+
+Then remove '${NEEDS_HUMAN_LABEL}' and re-add '${TRIGGER_LABEL}'."
+              continue
+            fi
+
+            # Update issue with enriched body
+            gh issue edit "${number}" --repo "${REPO}" --body "${enriched_body}" 2>&1 | tee -a "${LOGFILE}"
+            add_label "${number}" "${ENRICHED_LABEL}"
+
+            comment_issue "${number}" "🤖 **AI-SDLC Enrichment**
+
+This issue was missing some required sections. I've added:
+- ${missing_sections}
+
+**Please review the updated issue body above and:**
+- ✅ If acceptable: Add label \`${ENRICHMENT_APPROVED_LABEL}\`
+- ✏️ If needs changes: Edit the issue body, then add the approval label
+- ❌ If incorrect: Remove \`${ENRICHED_LABEL}\` and edit manually
+
+The enriched content is based on context from similar issues and repository structure."
+
+            log "Issue #${number} enriched, awaiting user confirmation"
+            ;;
+
+          MULTI_CRITERIA)
+            # Issue has multiple concerns - fragment it
+            log "Issue #${number} is multi-criteria, fragmenting..."
+            local concerns
+            concerns=$(echo "${analysis_result}" | jq -c '.concerns')
+
+            local fragmentation_result
+            fragmentation_result=$(fragment_issue "${number}" "${issue_body}" "${concerns}" "${issue_title}")
+
+            if [[ $? -ne 0 ]]; then
+              log "ERROR: Fragmentation failed for issue #${number}, marking needs-human"
+              add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+              comment_issue "${number}" "❌ **Fragmentation Failed**
+
+This issue appears to have multiple concerns, but I cannot split it automatically.
+
+Please either:
+1. Split manually into separate issues
+2. Simplify to a single concern
+3. Provide clearer acceptance criteria
+
+Then re-submit."
+              continue
+            fi
+
+            # Extract parent and children from fragmentation result
+            local parent_body
+            parent_body=$(echo "${fragmentation_result}" | jq -r '.parent_body')
+
+            # Create children issues
+            local children_json child_numbers child_refs
+            children_json=$(echo "${fragmentation_result}" | jq -c '.children[]')
+            child_numbers=()
+            child_refs=""
+
+            while IFS= read -r child; do
+              local child_order child_title child_body
+              child_order=$(echo "${child}" | jq -r '.order')
+              child_title=$(echo "${child}" | jq -r '.title')
+              child_body=$(echo "${child}" | jq -r '.body')
+
+              # Append parent reference to child body
+              child_body="${child_body}
+
+---
+**Parent Issue:** #${number}
+**Execution Order:** ${child_order}
+**Status:** Awaiting parent approval"
+
+              # Create child issue
+              local child_number
+              child_number=$(gh issue create \
+                --repo "${REPO}" \
+                --title "${child_title}" \
+                --body "${child_body}" \
+                --label "${CHILD_LABEL}" \
+                --json number -q '.number' 2>&1 | tee -a "${LOGFILE}")
+
+              if [[ -n "${child_number}" && "${child_number}" =~ ^[0-9]+$ ]]; then
+                child_numbers+=("${child_number}")
+                child_refs="${child_refs}- [ ] #${child_number} (order: ${child_order})
+"
+                log "Created child issue #${child_number} for parent #${number}"
+              else
+                log "ERROR: Failed to create child issue for parent #${number}"
+              fi
+            done <<< "${children_json}"
+
+            if [[ "${#child_numbers[@]}" -eq 0 ]]; then
+              log "ERROR: No children created for parent #${number}"
+              add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+              comment_issue "${number}" "❌ **Fragmentation Error**
+
+Failed to create child issues. Please split manually."
+              continue
+            fi
+
+            # Replace placeholder child references in parent body
+            local updated_parent_body="${parent_body}"
+            for i in "${!child_numbers[@]}"; do
+              local placeholder="#CHILD_$((i + 1))"
+              updated_parent_body="${updated_parent_body//${placeholder}/#${child_numbers[$i]}}"
+            done
+
+            # Update parent with fragmentation info
+            updated_parent_body="${updated_parent_body}
+
+---
+
+## Child Issues (Execute in order)
+
+${child_refs}
+
+**Status:** Parent awaiting approval
+
+---
+*This is a parent issue. Children will execute sequentially after approval.*"
+
+            gh issue edit "${number}" --repo "${REPO}" --body "${updated_parent_body}" 2>&1 | tee -a "${LOGFILE}"
+            add_label "${number}" "${PARENT_LABEL}"
+            add_label "${number}" "${FRAGMENTATION_LABEL}"
+
+            comment_issue "${number}" "🤖 **AI-SDLC Fragmentation**
+
+This issue contains multiple concerns and has been split into atomic tasks:
+
+${child_refs}
+
+**Please review:**
+- Check that each child issue is correctly scoped
+- Verify execution order is appropriate
+- Edit any child issue if needed
+
+**To proceed:**
+- ✅ If acceptable: Add label \`${FRAGMENTATION_APPROVED_LABEL}\` to THIS issue
+- ✏️ If needs changes: Edit child issues, then add approval label
+- ❌ If incorrect: Close children and re-create manually
+
+Children will execute sequentially in the order above."
+
+            log "Issue #${number} fragmented into ${#child_numbers[@]} children, awaiting approval"
+            ;;
+
+          ERROR)
+            # Cannot process - needs human
+            log "Issue #${number} cannot be processed automatically"
+            add_label "${number}" "${NEEDS_HUMAN_LABEL}"
+            local reasoning
+            reasoning=$(echo "${analysis_result}" | jq -r '.reasoning // "Unable to analyze"')
+            comment_issue "${number}" "❌ **Admission Error**
+
+${reasoning}
+
+This issue requires human review before it can be processed.
+
+Please clarify the requirements and resubmit."
+            ;;
+
+          *)
+            log "ERROR: Unknown classification '${classification}' for issue #${number}"
+            # Fallback to standard atomicity check
+            if check_issue_atomicity "${issue_body}" "${number}"; then
+              admit_issue_to_queue "${number}" "${labeler}"
+            else
+              log "Issue #${number} atomicity check failed; not admitting to queue"
+            fi
+            ;;
+        esac
       else
-        log "Issue #${number} atomicity check failed; not admitting to queue"
+        # Enhanced admission disabled - use standard atomicity check
+        if check_issue_atomicity "${issue_body}" "${number}"; then
+          admit_issue_to_queue "${number}" "${labeler}"
+        else
+          log "Issue #${number} atomicity check failed; not admitting to queue"
+        fi
       fi
     else
       reject_issue_from_queue "${number}" "${labeler}"
@@ -1477,6 +1923,17 @@ build_remediation_prompt() {
   local checks_json="$5"
   local reviews_json="$6"
   local trigger="$7"
+  local pr_number="${8:-}"
+
+  # Extract CodeRabbit feedback if available
+  local coderabbit_feedback=""
+  if [[ "${CODERABBIT_INTEGRATION_ENABLED}" == "true" && -n "${pr_number}" ]]; then
+    local coderabbit_comments
+    coderabbit_comments=$(extract_coderabbit_comments "${pr_number}" 2>/dev/null || echo '[]')
+    if format_coderabbit_feedback "${coderabbit_comments}" >/dev/null 2>&1; then
+      coderabbit_feedback=$(format_coderabbit_feedback "${coderabbit_comments}")
+    fi
+  fi
 
   cat <<EOF
 Continue the autonomous SDLC remediation for ${REPO} issue #${issue}.
@@ -1498,10 +1955,23 @@ $(jq -r '.' <<<"${checks_json}")
 
 Review or coverage context:
 $(jq -r '.' <<<"${reviews_json}")
+EOF
+
+  # Add CodeRabbit feedback section if available
+  if [[ -n "${coderabbit_feedback}" ]]; then
+    cat <<EOF
+
+Code Quality Feedback from CodeRabbit:
+${coderabbit_feedback}
+EOF
+  fi
+
+  cat <<EOF
 
 Rules:
 - Stay on branch ${branch}; never push directly to main.
 - Fix only the failing checks or actionable review feedback shown above.
+- If CodeRabbit feedback is present, apply the suggestions to improve code quality while keeping changes minimal.
 - If the trigger is a coverage gap, update the implementation and PR body so the section named ## Issue Coverage truthfully maps code changes to the issue request and acceptance criteria.
 - If the implementation is incomplete, make the missing code, test, workflow, or documentation changes instead of only describing them.
 - If only the PR body is incomplete, update it directly with gh pr edit so the coverage section contains checked, evidence-backed items.
@@ -1543,7 +2013,7 @@ run_scc_on_existing_pr() {
   prepare_workdir
   git -C "${WORKDIR}" checkout -B "${branch}" "origin/${branch}"
 
-  prompt="$(build_remediation_prompt "${issue}" "${title}" "${branch}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}")"
+  prompt="$(build_remediation_prompt "${issue}" "${title}" "${branch}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}" "${pr_number}")"
   if run_scc_with_timeout_handling "${prompt}"; then
     :
   else
@@ -1600,6 +2070,13 @@ run_scc_on_existing_pr() {
       mark_failed "${issue}" "Git push failed during remediation for branch ${branch}."
       return 0
     fi
+  fi
+
+  # If this was CodeRabbit remediation, add resolution notes
+  if [[ "${CODERABBIT_INTEGRATION_ENABLED}" == "true" && "${trigger}" == *"CodeRabbit"* ]]; then
+    local commit_sha
+    commit_sha=$(git -C "${WORKDIR}" rev-parse HEAD)
+    resolve_coderabbit_comments "${pr_number}" "${commit_sha}" 2>/dev/null || log "WARN: could not add CodeRabbit resolution notes"
   fi
 
   update_issue_state "${issue}" '.remediation_attempts = ((.remediation_attempts // 0) + 1) | .last_remediation_at = $updated_at'
@@ -1791,6 +2268,23 @@ reconcile_pr_state() {
     return 0
   fi
 
+  # Check for CodeRabbit comments that need to be addressed
+  if [[ "${CODERABBIT_INTEGRATION_ENABLED}" == "true" ]]; then
+    if needs_coderabbit_remediation "${pr_number}" 2>/dev/null; then
+      local last_coderabbit_sha
+      last_coderabbit_sha="$(jq -r '.last_coderabbit_remediation_sha // ""' "${state_file}")"
+
+      # Only trigger remediation if we haven't already addressed this SHA
+      if [[ "${last_coderabbit_sha}" != "${pr_sha}" ]]; then
+        trigger="CodeRabbit code quality suggestions on PR #${pr_number}"
+        set_flow_labels "${issue}" "${PR_LABEL}" "${UNDER_REVIEW_LABEL}"
+        LAST_CODERABBIT_SHA="${pr_sha}" update_issue_state "${issue}" '.last_pr_state = "coderabbit-review" | .last_coderabbit_remediation_sha = env.LAST_CODERABBIT_SHA | .last_checked_at = $updated_at'
+        run_scc_on_existing_pr "${issue}" "${issue_title}" "${branch}" "${pr_number}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}"
+        return 0
+      fi
+    fi
+  fi
+
   if [[ "${coverage_passed}" != "true" ]]; then
     trigger="technical issue coverage gap on PR #${pr_number}: $(jq -r '.gaps | join("; ")' <<<"${coverage_json}")"
     set_flow_labels "${issue}" "${PR_LABEL}" "${UNDER_REVIEW_LABEL}" "${COVERAGE_GAP_LABEL}"
@@ -1916,6 +2410,33 @@ finalize_merged_issue() {
   add_label "${number}" "${MERGED_LABEL}"
   remove_terminal_labels "${number}"
   append_run_summary "${number}" "completed" "${pr_number}" "" "PR #${pr_number} merged at ${merged_at} (${merge_sha}) and production release verification succeeded. ${release_url}"
+
+  # ============================================================================
+  # PHASE 4: SUCCESS TRACKING AND EDUCATIONAL FEEDBACK
+  # ============================================================================
+  if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]]; then
+    # Track success pattern
+    if declare -f track_success_pattern >/dev/null 2>&1; then
+      local issue_body
+      issue_body="$(gh issue view "${number}" --repo "${REPO}" --json body --jq '.body // ""' 2>/dev/null || echo "")"
+      track_success_pattern "${number}" "true" "${issue_body}"
+      log "Tracked success pattern for issue #${number}"
+    fi
+
+    # Post educational success comment
+    if declare -f post_success_pattern_comment >/dev/null 2>&1; then
+      local success_metrics="- **E2E Time**: Merge at ${merged_at}
+- **PR**: #${pr_number}
+- **Release**: ${release_url}"
+
+      local success_comment
+      success_comment=$(post_success_pattern_comment "${number}" "${success_metrics}")
+
+      comment_issue "${number}" "${success_comment}"
+      log "Posted success pattern comment for issue #${number}"
+    fi
+  fi
+
   comment_issue "${number}" "Autonomous SDLC completed: PR #${pr_number} was merged (${pr_url}) at ${merged_at}. Merge commit: \`${merge_sha}\`. Production release succeeded: ${release_url}"
   gh issue close "${number}" --repo "${REPO}" --comment "Closed by autonomous SDLC after PR #${pr_number} was merged and production release verification succeeded. Release: ${release_url}" >/dev/null 2>&1 || true
   log "closed issue #${number} via PR #${pr_number}; release verified"
@@ -2468,6 +2989,14 @@ main() {
 
   log "checking eligible issues in ${REPO}"
   write_heartbeat "running" "checking eligible issues"
+
+  # Enhanced admission reconciliations
+  if [[ "${ENHANCED_ADMISSION_ENABLED}" == "true" ]]; then
+    reconcile_enrichment_approvals
+    reconcile_fragmentation_approvals
+    reconcile_parent_executions
+  fi
+
   reconcile_stuck_admission_reviews
   reconcile_admission_requests
   mapfile -t issues < <(
@@ -2481,7 +3010,7 @@ main() {
 
   if [[ "${#issues[@]}" -eq 0 || -z "${issues[0]:-}" || "${issues[0]}" == "[]" ]]; then
     log "no eligible issues found"
-    write_heartbeat "ok" "no eligible issues found"
+    write_heartbeat_with_metrics "ok" "no eligible issues found"
     exit 0
   fi
 
@@ -2497,7 +3026,13 @@ main() {
   while IFS= read -r issue_json; do
     run_issue "${issue_json}"
   done < <(jq -c '.[]' <<<"${sorted_issues}")
-  write_heartbeat "ok" "cycle complete"
+
+  # Analyze success patterns periodically (once per cycle)
+  if [[ "${ENHANCED_VALIDATION_ENABLED}" == "true" ]] && declare -f analyze_success_patterns >/dev/null 2>&1; then
+    analyze_success_patterns
+  fi
+
+  write_heartbeat_with_metrics "ok" "cycle complete"
 }
 
 main "$@"
