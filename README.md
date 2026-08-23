@@ -106,6 +106,32 @@ cd dashboard/quarkus-app
 # Access: http://localhost:8081/sdlc/dashboard/
 ```
 
+## 📚 Cómo Usar el Sistema
+
+### Crear Issues para el Flujo Autónomo
+
+**[→ Getting Started: Crear Issues](docs/GETTING-STARTED.md)**
+
+Esta guía completa explica:
+- ✅ Formato requerido del issue (Description, Current state, Desired state, Acceptance Criteria)
+- ✅ Labels obligatorios: `ready-to-implement` + `priority:P3` (o P1/P2)
+- ✅ Ejemplos de issues (bug fix simple, feature request, documentación)
+- ✅ Timeline del flujo (0 min → issue creado → 20 min → PR merged)
+- ✅ Mejores prácticas (principio ADEV, criterios verificables, atomicidad)
+- ✅ Troubleshooting (issue no procesado, worker marcó needs-human, etc.)
+
+**Flujo end-to-end típico:**
+```
+00:00  Creas issue con labels correctos
+00:03  Worker detecta y acepta
+00:06  SCC genera código
+00:15  PR creado
+00:19  CI checks pasan
+00:20  Auto-merge → Deployed a producción ✓
+```
+
+**Tiempo total**: 10-30 minutos sin intervención humana
+
 ## Historia
 
 Este sistema fue desarrollado originalmente en el monorepo [os-santiago/homedir](https://github.com/os-santiago/homedir) y migrado a repositorio independiente el **2026-07-31** para evitar acoplamientos con la aplicación principal.

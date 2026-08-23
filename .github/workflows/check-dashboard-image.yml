@@ -1,0 +1,41 @@
+name: Check Dashboard Container Image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check dashboard container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "=== Current Dashboard Container ==="
+            podman ps --filter name=ai-sdlc-dashboard --format 'ID={{.ID}} Image={{.Image}} Created={{.CreatedAt}}'
+
+            echo ""
+            echo "=== Container Image ID ==="
+            podman inspect ai-sdlc-dashboard --format '{{.Image}}'
+
+            echo ""
+            echo "=== Latest Image Available ==="
+            podman images ghcr.io/os-santiago/homedir-ai-sdlc/dashboard --format '{{.ID}} {{.Created}} {{.Tag}}'
+
+            echo ""
+            echo "=== Check if container is using latest image ==="
+            CONTAINER_IMAGE=$(podman inspect ai-sdlc-dashboard --format '{{.Image}}')
+            LATEST_IMAGE=$(podman images ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest --format '{{.ID}}' | head -1)
+
+            echo "Container using: $CONTAINER_IMAGE"
+            echo "Latest image:    $LATEST_IMAGE"
+
+            if [ "$CONTAINER_IMAGE" = "$LATEST_IMAGE" ]; then
+              echo "✅ Container is using the latest image"
+            else
+              echo "❌ Container is NOT using the latest image - needs recreation"
+            fi
