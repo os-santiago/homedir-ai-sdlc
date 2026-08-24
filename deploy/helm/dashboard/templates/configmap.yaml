@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dashboard.fullname" . }}
+  labels:
+    {{- include "dashboard.labels" . | nindent 4 }}
+data:
+  HOMEDIR_SDLC_STATE_DIR: {{ .Values.config.stateDir | quote }}
+  HOMEDIR_SDLC_DASHBOARD_SNAPSHOT_INTERVAL: {{ .Values.config.snapshotInterval | quote }}
+  HOMEDIR_SDLC_DASHBOARD_CONTROLS_ENABLED: {{ .Values.config.controlsEnabled | quote }}
+  HOMEDIR_SDLC_DASHBOARD_MAX_EVENTS: {{ .Values.config.maxEvents | quote }}
+  HOMEDIR_SDLC_DASHBOARD_MAX_FILES_PER_CYCLE: {{ .Values.config.maxFilesPerCycle | quote }}
+  HOMEDIR_SDLC_DASHBOARD_MAX_BYTES_PER_CYCLE: {{ .Values.config.maxBytesPerCycle | quote }}
+  QUARKUS_HTTP_PORT: {{ .Values.service.port | quote }}

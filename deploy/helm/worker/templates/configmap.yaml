@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "worker.fullname" . }}
+  labels:
+    {{- include "worker.labels" . | nindent 4 }}
+data:
+  HOMEDIR_SDLC_REPO: {{ .Values.config.repo | quote }}
+  HOMEDIR_SDLC_TRIGGER_LABEL: {{ .Values.config.triggerLabel | quote }}
+  HOMEDIR_SDLC_QUEUE_LABEL: {{ .Values.config.queueLabel | quote }}
+  HOMEDIR_SDLC_REJECTED_LABEL: {{ .Values.config.rejectedLabel | quote }}
+  HOMEDIR_SDLC_RUNNING_LABEL: {{ .Values.config.runningLabel | quote }}
+  HOMEDIR_SDLC_PR_LABEL: {{ .Values.config.prLabel | quote }}
+  HOMEDIR_SDLC_APPROVED_LABEL: {{ .Values.config.approvedLabel | quote }}
+  HOMEDIR_SDLC_MERGED_LABEL: {{ .Values.config.mergedLabel | quote }}
+  HOMEDIR_SDLC_FAILED_LABEL: {{ .Values.config.failedLabel | quote }}
+  HOMEDIR_SDLC_NEEDS_HUMAN_LABEL: {{ .Values.config.needsHumanLabel | quote }}
+  HOMEDIR_SDLC_STATE_DIR: {{ .Values.persistence.state.mountPath | quote }}
+  HOMEDIR_SDLC_WORKDIR: {{ printf "%s/homedir" .Values.persistence.worktrees.mountPath | quote }}
+  HOMEDIR_SDLC_LOGFILE: "/var/log/homedir-sdlc/worker.log"
+  HOMEDIR_SDLC_MAX_ISSUES_PER_RUN: {{ .Values.config.maxIssuesPerRun | quote }}
+  HOMEDIR_SDLC_INTERVAL: {{ .Values.config.reconcileInterval | quote }}
+  HOMEDIR_SDLC_GIT_USER_NAME: "homedir-sdlc[bot]"
+  HOMEDIR_SDLC_GIT_USER_EMAIL: "homedir-sdlc@users.noreply.github.com"
+  SCC_BIN: "scc"
+  SCC_TIMEOUT_SECONDS: {{ .Values.config.scc.timeoutSeconds | quote }}
+  SCC_CLEAR_HISTORY: {{ .Values.config.scc.clearHistory | quote }}
+  SCC_PROFILE: {{ .Values.config.scc.profile | quote }}
+  SCC_PERMISSIONS: {{ .Values.config.scc.permissions | quote }}
+  HOMEDIR_SDLC_ENABLE_AUTOMERGE: {{ .Values.config.autoMerge.enabled | quote }}
+  ENHANCED_ADMISSION_ENABLED: {{ .Values.config.enhancedAdmission.enabled | quote }}
+  ENHANCED_VALIDATION_ENABLED: {{ .Values.config.enhancedValidation.enabled | quote }}
+  CODERABBIT_INTEGRATION_ENABLED: {{ .Values.config.codeRabbit.enabled | quote }}
+  PLATFORM_DIR: "/app"
+  HOMEDIR_SDLC_WORKER_VERSION: {{ .Chart.AppVersion | quote }}
