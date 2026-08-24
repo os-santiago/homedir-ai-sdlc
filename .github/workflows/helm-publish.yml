@@ -1,0 +1,212 @@
+name: Publish Helm Charts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/helm/**'
+      - '.github/workflows/helm-publish.yml'
+
+  release:
+    types: [published]
+
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  HELM_REPO: ghcr.io/${{ github.repository }}/helm-charts
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  lint:
+    name: Lint Helm Charts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+
+      - name: Lint worker chart
+        run: helm lint deploy/helm/worker
+
+      - name: Lint dashboard chart
+        run: helm lint deploy/helm/dashboard
+
+      - name: Lint umbrella chart
+        run: helm lint deploy/helm/ai-sdlc
+
+  package-and-publish:
+    name: Package and Publish Charts
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+          else
+            VERSION="$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Update chart versions
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Update worker chart
+          sed -i "s/^version:.*/version: $VERSION/" deploy/helm/worker/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" deploy/helm/worker/Chart.yaml
+
+          # Update dashboard chart
+          sed -i "s/^version:.*/version: $VERSION/" deploy/helm/dashboard/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" deploy/helm/dashboard/Chart.yaml
+
+          # Update umbrella chart
+          sed -i "s/^version:.*/version: $VERSION/" deploy/helm/ai-sdlc/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" deploy/helm/ai-sdlc/Chart.yaml
+
+          # Update dependencies
+          sed -i "s/version: \".*\" # worker/version: \"$VERSION\" # worker/" deploy/helm/ai-sdlc/Chart.yaml
+          sed -i "s/version: \".*\" # dashboard/version: \"$VERSION\" # dashboard/" deploy/helm/ai-sdlc/Chart.yaml
+
+      - name: Package charts
+        run: |
+          mkdir -p .helm-packages
+
+          # Package worker chart
+          helm package deploy/helm/worker -d .helm-packages
+
+          # Package dashboard chart
+          helm package deploy/helm/dashboard -d .helm-packages
+
+          # Update dependencies for umbrella chart
+          helm dependency update deploy/helm/ai-sdlc
+
+          # Package umbrella chart
+          helm package deploy/helm/ai-sdlc -d .helm-packages
+
+      - name: Push charts to OCI registry
+        run: |
+          for chart in .helm-packages/*.tgz; do
+            echo "Pushing $chart..."
+            helm push "$chart" oci://${{ env.REGISTRY }}/${{ github.repository }}/helm-charts
+          done
+
+      - name: Generate chart index
+        run: |
+          helm repo index .helm-packages --url https://${{ env.REGISTRY }}/${{ github.repository }}/helm-charts
+
+      - name: Upload packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-charts
+          path: .helm-packages/*.tgz
+          retention-days: 30
+
+      - name: Create deployment summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # 📦 Helm Charts Published
+
+          ## Charts
+          - **Worker**: \`${{ env.HELM_REPO }}/worker:${{ steps.version.outputs.version }}\`
+          - **Dashboard**: \`${{ env.HELM_REPO }}/dashboard:${{ steps.version.outputs.version }}\`
+          - **AI-SDLC (Umbrella)**: \`${{ env.HELM_REPO }}/ai-sdlc:${{ steps.version.outputs.version }}\`
+
+          ## Install
+          \`\`\`bash
+          helm install ai-sdlc oci://${{ env.HELM_REPO }}/ai-sdlc \\
+            --version ${{ steps.version.outputs.version }} \\
+            --namespace homedir-ai-sdlc \\
+            --create-namespace
+          \`\`\`
+
+          ## GitOps
+          Update \`deploy/gitops/kustomization.yaml\`:
+          \`\`\`yaml
+          helmCharts:
+            - name: ai-sdlc
+              version: ${{ steps.version.outputs.version }}
+          \`\`\`
+          EOF
+
+  test:
+    name: Test Chart Installation
+    runs-on: ubuntu-latest
+    needs: package-and-publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Kind
+        uses: helm/kind-action@v1
+
+      - name: Download charts
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-charts
+          path: .helm-packages
+
+      - name: Create test namespace
+        run: kubectl create namespace ai-sdlc-test
+
+      - name: Create test secrets
+        run: |
+          kubectl create secret generic ai-sdlc-secrets \
+            --namespace ai-sdlc-test \
+            --from-literal=gh-token=test-token \
+            --from-literal=nvidia-api-key=test-api-key
+
+      - name: Install worker chart
+        run: |
+          helm install ai-sdlc-worker .helm-packages/worker-*.tgz \
+            --namespace ai-sdlc-test \
+            --set persistence.state.enabled=false \
+            --set persistence.worktrees.enabled=false \
+            --wait --timeout 2m
+
+      - name: Install dashboard chart
+        run: |
+          helm install ai-sdlc-dashboard .helm-packages/dashboard-*.tgz \
+            --namespace ai-sdlc-test \
+            --set persistence.enabled=false \
+            --set ingress.enabled=false \
+            --wait --timeout 2m
+
+      - name: Verify deployments
+        run: |
+          kubectl get pods -n ai-sdlc-test
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=worker -n ai-sdlc-test --timeout=60s || true
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=dashboard -n ai-sdlc-test --timeout=60s || true
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Worker Logs ==="
+          kubectl logs -n ai-sdlc-test -l app.kubernetes.io/component=worker --tail=50 || true
+          echo "=== Dashboard Logs ==="
+          kubectl logs -n ai-sdlc-test -l app.kubernetes.io/component=dashboard --tail=50 || true

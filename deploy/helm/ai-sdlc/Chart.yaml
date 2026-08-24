@@ -1,0 +1,25 @@
+apiVersion: v2
+name: ai-sdlc
+description: AI-SDLC Autonomous Development Lifecycle System
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/os-santiago/homedir-ai-sdlc
+sources:
+  - https://github.com/os-santiago/homedir-ai-sdlc
+maintainers:
+  - name: os-santiago
+    email: hello@opensourcesantiago.io
+keywords:
+  - ai
+  - sdlc
+  - autonomous
+  - ci-cd
+  - devops
+dependencies:
+  - name: worker
+    version: "1.0.0"
+    repository: "file://../worker"
+  - name: dashboard
+    version: "1.0.0"
+    repository: "file://../dashboard"

@@ -1,0 +1,126 @@
+# Default values for ai-sdlc-dashboard
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/os-santiago/homedir-ai-sdlc/dashboard
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hosts:
+    - host: homedir-ai-sdlc.opensourcesantiago.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ai-sdlc-dashboard-tls
+      hosts:
+        - homedir-ai-sdlc.opensourcesantiago.io
+
+# Dashboard configuration
+config:
+  # State directory (shared with worker via PVC)
+  stateDir: /var/lib/homedir-sdlc
+
+  # Snapshot interval
+  snapshotInterval: 30s
+
+  # Dashboard controls
+  controlsEnabled: false
+
+  # Max events
+  maxEvents: 2000
+  maxFilesPerCycle: 250
+  maxBytesPerCycle: 65536
+
+# Shared volume with worker (read-only)
+persistence:
+  enabled: true
+  # Use same PVC as worker
+  existingClaim: ""
+  mountPath: /var/lib/homedir-sdlc
+  readOnly: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /q/health/live
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /q/health/ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s

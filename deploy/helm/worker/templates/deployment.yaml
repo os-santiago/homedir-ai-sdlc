@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "worker.fullname" . }}
+  labels:
+    {{- include "worker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "worker.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "worker.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "worker.fullname" . }}
+          env:
+            {{- toYaml .Values.env | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: {{ .Values.persistence.state.mountPath }}
+            - name: worktrees
+              mountPath: {{ .Values.persistence.worktrees.mountPath }}
+            - name: logs
+              mountPath: /var/log/homedir-sdlc
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  HEARTBEAT_FILE="{{ .Values.persistence.state.mountPath }}/heartbeat.json"
+                  if [ ! -f "$HEARTBEAT_FILE" ]; then
+                    exit 1
+                  fi
+                  LAST_BEAT=$(jq -r '.last_beat // ""' "$HEARTBEAT_FILE")
+                  if [ -z "$LAST_BEAT" ]; then
+                    exit 1
+                  fi
+                  NOW=$(date -u +%s)
+                  LAST_BEAT_EPOCH=$(date -d "$LAST_BEAT" +%s 2>/dev/null || echo 0)
+                  AGE=$((NOW - LAST_BEAT_EPOCH))
+                  if [ $AGE -gt 600 ]; then
+                    exit 1
+                  fi
+                  exit 0
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  HEARTBEAT_FILE="{{ .Values.persistence.state.mountPath }}/heartbeat.json"
+                  [ -f "$HEARTBEAT_FILE" ]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: state
+          {{- if .Values.persistence.state.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "worker.fullname" . }}-state
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: worktrees
+          {{- if .Values.persistence.worktrees.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "worker.fullname" . }}-worktrees
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: logs
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
