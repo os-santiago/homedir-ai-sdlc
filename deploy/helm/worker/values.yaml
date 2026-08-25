@@ -75,19 +75,25 @@ config:
   codeRabbit:
     enabled: true
 
-# Environment variables from secrets
-env:
-  - name: GH_TOKEN
-    valueFrom:
-      secretKeyRef:
-        name: ai-sdlc-secrets
-        key: gh-token
+# Secrets configuration
+secrets:
+  # Create secret from values (for testing/dev)
+  # In production, use external secret or CI/CD to inject values
+  create: false
 
-  - name: NVIDIA_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: ai-sdlc-secrets
-        key: nvidia-api-key
+  # Secret values (only used if create: true)
+  # IMPORTANT: Never commit real secrets to git
+  # Use --set secrets.ghToken=$GH_TOKEN at deploy time
+  ghToken: ""
+  nvidiaApiKey: ""
+
+  # External secret name (if create: false)
+  # Expected keys: GH_TOKEN, NVIDIA_API_KEY
+  existingSecret: ""
+
+# Additional environment variables (optional)
+# Secrets are automatically injected from secret above
+env: []
 
 # Persistent volumes
 persistence:
