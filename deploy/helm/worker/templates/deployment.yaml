@@ -15,7 +15,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.secrets.create }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -39,7 +41,19 @@ spec:
             - configMapRef:
                 name: {{ include "worker.fullname" . }}
           env:
-            {{- toYaml .Values.env | nindent 12 }}
+            - name: GH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret | default (include "worker.fullname" .) }}
+                  key: GH_TOKEN
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret | default (include "worker.fullname" .) }}
+                  key: NVIDIA_API_KEY
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - name: state
               mountPath: {{ .Values.persistence.state.mountPath }}

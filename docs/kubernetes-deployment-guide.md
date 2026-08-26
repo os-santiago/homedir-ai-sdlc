@@ -71,6 +71,61 @@ curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 ---
 
+## Secrets Management
+
+AI-SDLC worker requires two secrets:
+- `GH_TOKEN`: GitHub Personal Access Token with repo access
+- `NVIDIA_API_KEY`: Nvidia API key for Nemotron model
+
+### Option 1: Manual Secret Creation
+
+```bash
+# Create Kubernetes secret manually
+kubectl create secret generic ai-sdlc-worker-secrets \
+  --from-literal=GH_TOKEN="your_github_token" \
+  --from-literal=NVIDIA_API_KEY="your_nvidia_api_key" \
+  -n homedir-ai-sdlc
+```
+
+### Option 2: Helm Values (Development Only)
+
+**WARNING**: Never commit secrets to git!
+
+```bash
+helm install ai-sdlc-worker ./deploy/helm/worker \
+  --set secrets.create=true \
+  --set secrets.ghToken="$GH_TOKEN" \
+  --set secrets.nvidiaApiKey="$NVIDIA_API_KEY" \
+  --namespace homedir-ai-sdlc
+```
+
+### Option 3: External Secret (Recommended for Production)
+
+Use existing secret:
+
+```bash
+helm install ai-sdlc-worker ./deploy/helm/worker \
+  --set secrets.create=false \
+  --set secrets.existingSecret=my-existing-secret \
+  --namespace homedir-ai-sdlc
+```
+
+Secret must contain keys: `GH_TOKEN`, `NVIDIA_API_KEY`
+
+### Option 4: GitHub Actions CI/CD (Automated)
+
+The `.github/workflows/deploy-k3s.yml` workflow automatically:
+1. Creates/updates secret from GitHub Secrets
+2. Deploys worker with Helm
+3. Verifies deployment
+
+Required GitHub Secrets:
+- `GH_TOKEN`
+- `NVIDIA_API_KEY`
+- `KUBECONFIG_K3S` (base64 encoded kubeconfig)
+
+---
+
 ## Deployment Options
 
 ### Option 1: Helm (Direct - For Testing)
