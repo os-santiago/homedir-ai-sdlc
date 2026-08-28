@@ -132,6 +132,72 @@ Esta guía completa explica:
 
 **Tiempo total**: 10-30 minutos sin intervención humana
 
+## 🤝 Contributing
+
+### Branch Protection & PR Workflow
+
+The `main` branch is protected to ensure code quality and stability:
+
+**Protection Rules:**
+- ✅ **Pull Requests Required**: Direct pushes to `main` are blocked
+- ✅ **CI Checks Required**: `CI / events-service` must pass before merge
+- ✅ **Applies to Admins**: Everyone follows the same workflow
+- ✅ **No Force Pushes**: History integrity is enforced
+
+**Contribution Workflow (ADEV):**
+
+```bash
+# 1. Create an issue first
+gh issue create --title "feat: add new feature" --body "Description..."
+
+# 2. Create branch from issue
+git checkout -b feat/issue-N-feature-name
+
+# 3. Make changes and commit
+git add .
+git commit -m "feat: add new feature
+
+Closes #N"
+
+# 4. Push and create PR
+git push origin feat/issue-N-feature-name
+gh pr create --title "feat: add new feature" --body "Closes #N"
+
+# 5. Wait for CI to pass
+# CI runs automatically on PR creation
+# Check status: gh pr checks
+
+# 6. Merge when green
+gh pr merge --merge --delete-branch
+```
+
+**CI Requirements:**
+- All PRs must pass `CI / events-service` check
+- Build and tests must complete successfully
+- Cannot merge with failing CI
+
+**Quality Standards:**
+- Follow conventional commits: `feat:`, `fix:`, `docs:`, `ci:`, etc.
+- Link PRs to issues with `Closes #N`
+- One feature/fix per PR
+- Update documentation for user-facing changes
+
+### Running Tests Locally
+
+```bash
+# Events Service (Java/Quarkus)
+cd events-service
+./mvnw clean test
+
+# Worker (Bash)
+cd platform/scripts
+./run-tests.sh
+```
+
+### Development Setup
+
+See [docs/development/](docs/development/) for detailed development guides.
+
 ## Historia
 
 Este sistema fue desarrollado originalmente en el monorepo [os-santiago/homedir](https://github.com/os-santiago/homedir) y migrado a repositorio independiente el **2026-07-31** para evitar acoplamientos con la aplicación principal.
