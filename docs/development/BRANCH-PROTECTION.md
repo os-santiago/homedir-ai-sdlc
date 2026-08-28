@@ -150,21 +150,36 @@ gh pr create --title "test: branch protection" --body "Testing"
 # Check PR - should show "CI / events-service" as required
 ```
 
-## Configuration Script
+## Configuration Applied
 
-The branch protection is configured via `configure-branch-protection.sh`:
+Branch protection was configured directly via GitHub CLI:
 
 ```bash
-# View script
-cat configure-branch-protection.sh
+gh api \
+  --method PUT \
+  repos/os-santiago/homedir-ai-sdlc/branches/main/protection \
+  --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["CI / events-service"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 0
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+EOF
+```
 
-# Re-apply configuration (idempotent)
-./configure-branch-protection.sh
+To verify current configuration:
 
-# Output shows:
-# - Current status
-# - Applied configuration
-# - Verification results
+```bash
+gh api repos/os-santiago/homedir-ai-sdlc/branches/main/protection \
+  --jq '{required_status_checks, enforce_admins, required_pull_request_reviews}'
 ```
 
 ## History
@@ -210,10 +225,17 @@ Possible causes:
 
 ### Protection Accidentally Removed
 
-Re-apply configuration:
+Re-apply configuration via GitHub CLI:
 
 ```bash
-./configure-branch-protection.sh
+gh api --method PUT \
+  repos/os-santiago/homedir-ai-sdlc/branches/main/protection \
+  --field required_status_checks='{"strict":true,"contexts":["CI / events-service"]}' \
+  --field enforce_admins=true \
+  --field required_pull_request_reviews='{"required_approving_review_count":0}' \
+  --field restrictions=null \
+  --field allow_force_pushes=false \
+  --field allow_deletions=false
 ```
 
 Or via GitHub Web UI:
