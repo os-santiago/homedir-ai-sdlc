@@ -12,6 +12,35 @@ Sistema autónomo de desarrollo que gestiona el ciclo completo de issues en GitH
 - **Worker**: Bash script (2,476 líneas) + política-driven decision making
 - **CI/CD**: Push to main → Build containers → Deploy to production (zero manual steps)
 
+## 📐 Architecture
+
+Visual diagrams of system design, workflow, and deployment:
+
+**[→ Architecture Documentation](docs/architecture/README.md)**
+
+- **Component Architecture**: All services and their interactions
+- **Autonomous Workflow**: End-to-end flow from issue to deployment
+- **State Machine**: Issue lifecycle and transitions
+- **Deployment Architecture**: Container orchestration and VPS setup
+- **Data Flow**: Sequence diagrams of component interactions
+
+Quick preview:
+
+```mermaid
+flowchart LR
+    Issue[New Issue] --> Worker[Worker<br/>Bash]
+    Worker --> SCC[SCC<br/>Code Gen]
+    SCC --> PR[Pull Request]
+    PR --> CI{CI Check}
+    CI -->|Pass| Merge[Auto-Merge]
+    CI -->|Fail| Fix[Auto-Fix]
+    Fix --> CI
+    Merge --> Deploy[Deploy]
+    
+    style Issue fill:#4CAF50
+    style Deploy fill:#4CAF50
+```
+
 ## Componentes
 
 ### 1. Worker Bash (Producción)
