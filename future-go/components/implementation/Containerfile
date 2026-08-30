@@ -108,8 +108,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o implementation-se
 # ============================================================================
 WORKDIR /app
 
-# Copy binary
-COPY --from=0 /build/implementation-service .
+# Copy binary (from current stage build directory)
+RUN mv /build/implementation-service .
 
 # Copy sc-agent config to runtime location
 RUN mkdir -p /.sc-agent && \
