@@ -8,8 +8,16 @@ if [ ! -d "${HOME}/.sc-agent" ]; then
     cp -r /.sc-agent/config.json "${HOME}/.sc-agent/"
 fi
 
-# If NVIDIA_API_KEY is set, inject it into the config
-if [ -n "${NVIDIA_API_KEY:-}" ]; then
+# Inject API key from environment based on active profile
+ACTIVE_PROFILE=$(jq -r '.activeProfile' "${HOME}/.sc-agent/config.json")
+
+if [ "$ACTIVE_PROFILE" = "openai" ] && [ -n "${OPENAI_API_KEY:-}" ]; then
+    echo "Configuring OpenAI API key from environment..."
+    jq --arg key "$OPENAI_API_KEY" \
+       '.profiles.openai.apiKey = $key | .profiles."openai-fast".apiKey = $key' \
+       "${HOME}/.sc-agent/config.json" > "${HOME}/.sc-agent/config.json.tmp" && \
+       mv "${HOME}/.sc-agent/config.json.tmp" "${HOME}/.sc-agent/config.json"
+elif [ "$ACTIVE_PROFILE" = "nvidia" ] && [ -n "${NVIDIA_API_KEY:-}" ]; then
     echo "Configuring NVIDIA API key from environment..."
     jq --arg key "$NVIDIA_API_KEY" \
        '.profiles.nvidia.apiKey = $key | .profiles."nvidia-fast".apiKey = $key' \
