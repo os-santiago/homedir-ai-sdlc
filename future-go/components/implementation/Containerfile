@@ -43,8 +43,8 @@ RUN echo "Installing sc-agent-cli..." && \
     chmod +x /usr/local/bin/scc && \
     scc --version || (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
-# Configure sc-agent-cli with OpenAI (reliable and widely available)
-COPY future-go/components/implementation/config-openai.json /etc/skel/.sc-agent/config.json
+# Configure sc-agent-cli with LiteLLM (Qwen3.6-35B-A3B)
+COPY future-go/components/implementation/config-litellm.json /etc/skel/.sc-agent/config.json
 
 # ============================================================================
 # Build Implementation Service
@@ -80,7 +80,7 @@ RUN chmod -R 755 /app
 # Environment defaults
 ENV PORT=8082
 ENV SC_AGENT_PATH=/usr/local/bin/scc
-ENV SC_PROFILE=qwen
+ENV SC_PROFILE=litellm
 ENV MAX_IMPLEMENTATION_ITERATIONS=3
 ENV QUALITY_THRESHOLD=8.0
 
