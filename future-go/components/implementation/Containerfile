@@ -1,0 +1,38 @@
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build
+RUN go build -o implementation-service ./cmd
+
+# Runtime image
+FROM alpine:latest
+
+# Install sc-agent-cli dependencies
+RUN apk add --no-cache nodejs npm
+
+# Install sc-agent-cli globally
+RUN npm install -g @sc-agent/cli
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/implementation-service .
+
+# Expose port
+EXPOSE 8082
+
+# Default environment
+ENV PORT=8082
+ENV SC_PROFILE=qwen3.6
+ENV MAX_IMPLEMENTATION_ITERATIONS=3
+ENV QUALITY_THRESHOLD=8.0
+
+CMD ["./implementation-service"]

@@ -1,0 +1,18 @@
+# Binaries
+implementation-service
+*.exe
+
+# Go
+vendor/
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
