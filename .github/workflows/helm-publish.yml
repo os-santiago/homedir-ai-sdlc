@@ -166,7 +166,7 @@ jobs:
         uses: helm/kind-action@v1
 
       - name: Download charts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: helm-charts
           path: .helm-packages
