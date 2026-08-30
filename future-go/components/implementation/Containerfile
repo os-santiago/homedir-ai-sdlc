@@ -1,47 +1,120 @@
-FROM golang:1.24-alpine AS builder
+# ============================================================================
+# Implementation Service - Multi-pass Code Generation with Quality Feedback
+# ============================================================================
+FROM docker.io/library/ubuntu:24.04
 
+LABEL maintainer="scanales-stack"
+LABEL org.opencontainers.image.source="https://github.com/os-santiago/homedir-ai-sdlc"
+LABEL org.opencontainers.image.description="AI-SDLC Implementation Service"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# ============================================================================
+# System Dependencies
+# ============================================================================
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    nodejs \
+    npm \
+    build-essential \
+    golang-1.24 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Add Go to PATH
+ENV PATH=/usr/lib/go-1.24/bin:$PATH
+
+# ============================================================================
+# SC-Agent-CLI (Same as Worker)
+# ============================================================================
+ARG SC_AGENT_REPO=https://github.com/os-santiago/sc-agent-cli.git
+ARG SC_AGENT_REF=main
+
+RUN echo "Installing sc-agent-cli..." && \
+    git clone --depth 1 --branch ${SC_AGENT_REF} ${SC_AGENT_REPO} /opt/sc-agent-cli && \
+    cd /opt/sc-agent-cli && \
+    npm ci && \
+    npm run build && \
+    echo '#!/usr/bin/env bash' > /usr/local/bin/scc && \
+    echo 'exec node /opt/sc-agent-cli/bin/sc.js "$@"' >> /usr/local/bin/scc && \
+    chmod +x /usr/local/bin/scc && \
+    scc --version || (echo "ERROR: sc-agent-cli installation failed" && exit 1)
+
+# Configure sc-agent-cli with nvidia profile (same as worker)
+RUN mkdir -p /etc/skel/.sc-agent && \
+    cat > /etc/skel/.sc-agent/config.json <<'EOF'
+{
+  "model": {
+    "provider": "openai-compatible",
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "temperature": 1,
+    "maxTokens": 16384
+  },
+  "permissions": {
+    "autoApprove": [
+      "read_file",
+      "list_dir",
+      "write_file",
+      "edit_file",
+      "run_shell"
+    ]
+  },
+  "profiles": {
+    "nvidia": {
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "temperature": 1,
+      "maxTokens": 16384
+    }
+  },
+  "activeProfile": "nvidia"
+}
+EOF
+
+# ============================================================================
+# Build Implementation Service
+# ============================================================================
 WORKDIR /build
 
-# Copy go mod files
-COPY future-go/components/implementation/go.mod ./
-RUN go mod download
-
-# Copy source
+# Copy go source
 COPY future-go/components/implementation/ ./
 
-# Build with CGO disabled for static binary
+# Build static binary
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o implementation-service ./cmd
 
-# Runtime image
-FROM alpine:latest
-
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates curl
-
+# ============================================================================
+# Runtime Setup
+# ============================================================================
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /build/implementation-service .
+# Copy binary
+COPY --from=0 /build/implementation-service .
 
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser && \
-    chown -R appuser:appuser /app
+# Copy sc-agent config to runtime location
+RUN mkdir -p /.sc-agent && \
+    cp /etc/skel/.sc-agent/config.json /.sc-agent/ && \
+    chmod -R 777 /.sc-agent
 
-USER appuser
+# Rootless compatibility (no USER directive - runs as any UID)
+RUN chmod -R 755 /app
 
-# Expose port
-EXPOSE 8082
-
-# Default environment
+# Environment defaults
 ENV PORT=8082
 ENV SC_AGENT_PATH=/usr/local/bin/scc
-ENV SC_PROFILE=qwen3.6
+ENV SC_PROFILE=nvidia
 ENV MAX_IMPLEMENTATION_ITERATIONS=3
 ENV QUALITY_THRESHOLD=8.0
 
+# Expose port (internal to pod)
+EXPOSE 8082
+
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8082/health || exit 1
 
+# Run as any UID (rootless compatible)
 CMD ["./implementation-service"]
