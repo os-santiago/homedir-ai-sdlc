@@ -43,35 +43,52 @@ RUN echo "Installing sc-agent-cli..." && \
     chmod +x /usr/local/bin/scc && \
     scc --version || (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
-# Configure sc-agent-cli with nvidia profile (same as worker)
+# Configure sc-agent-cli with qwen profile (same as local config)
 RUN mkdir -p /etc/skel/.sc-agent && \
     cat > /etc/skel/.sc-agent/config.json <<'EOF'
 {
   "model": {
     "provider": "openai-compatible",
-    "baseUrl": "https://integrate.api.nvidia.com/v1",
-    "model": "nvidia/nemotron-3-ultra-550b-a55b",
-    "temperature": 1,
-    "maxTokens": 16384
+    "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
+    "model": "Qwen3.6-35B-A3B",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "stream": true,
+    "timeout": 120000
   },
   "permissions": {
     "autoApprove": [
       "read_file",
       "list_dir",
+      "search_text",
+      "web_fetch",
+      "memory_read",
+      "run_shell",
       "write_file",
-      "edit_file",
-      "run_shell"
+      "edit_file"
+    ],
+    "denyPaths": [
+      ".env",
+      ".env.*",
+      "**/*.key",
+      "**/*.pem"
     ]
   },
   "profiles": {
-    "nvidia": {
-      "baseUrl": "https://integrate.api.nvidia.com/v1",
-      "model": "nvidia/nemotron-3-ultra-550b-a55b",
-      "temperature": 1,
-      "maxTokens": 16384
+    "qwen": {
+      "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
+      "model": "Qwen3.6-35B-A3B",
+      "temperature": 0.7,
+      "maxTokens": 4096,
+      "timeout": 120000,
+      "apiKey": "sk-GmZO20unlgM0ATKV59VBAQ"
+    },
+    "ollama": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "llama3.2"
     }
   },
-  "activeProfile": "nvidia"
+  "activeProfile": "qwen"
 }
 EOF
 
@@ -105,7 +122,7 @@ RUN chmod -R 755 /app
 # Environment defaults
 ENV PORT=8082
 ENV SC_AGENT_PATH=/usr/local/bin/scc
-ENV SC_PROFILE=nvidia
+ENV SC_PROFILE=qwen
 ENV MAX_IMPLEMENTATION_ITERATIONS=3
 ENV QUALITY_THRESHOLD=8.0
 

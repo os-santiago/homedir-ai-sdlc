@@ -360,11 +360,10 @@ jobs:
                 --name ai-sdlc-implementation \
                 --restart unless-stopped \
                 -e PORT=8082 \
-                -e SC_PROFILE=nvidia \
+                -e SC_PROFILE=qwen \
                 -e SC_AGENT_PATH=/usr/local/bin/scc \
                 -e MAX_IMPLEMENTATION_ITERATIONS=3 \
                 -e QUALITY_THRESHOLD=8.0 \
-                -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
                 ${{ env.IMAGE_IMPLEMENTATION }}:latest
 
               # Verify implementation is running
