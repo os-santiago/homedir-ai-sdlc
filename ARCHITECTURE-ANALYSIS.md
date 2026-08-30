@@ -3,9 +3,9 @@
 ## Estado Detectado
 
 ### Registry
-✅ **ghcr.io** (GitHub Container Registry)
-- Worker: `ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest`
-- Dashboard: `ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest`
+✅ **quay.io** (GitHub Container Registry)
+- Worker: `quay.io/os-santiago/homedir-ai-sdlc/worker:latest`
+- Dashboard: `quay.io/os-santiago/homedir-ai-sdlc/dashboard:latest`
 - Authentication: `${{ secrets.GITHUB_TOKEN }}`
 
 ### Deployment Platform
@@ -40,11 +40,11 @@ podman run -d \
 ```
 1. GitHub Actions triggered on push to main
 2. Build Worker + Dashboard containers
-3. Push to ghcr.io
+3. Push to quay.io
 4. SSH to VPS
 5. Stop/remove existing pod
 6. Create new pod
-7. Pull images from ghcr.io
+7. Pull images from quay.io
 8. Run containers in pod
 9. Verify deployment
 ```
@@ -84,7 +84,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: quay.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v5
@@ -92,7 +92,7 @@ jobs:
           context: .
           file: future-go/components/implementation/Containerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/implementation:latest
+          tags: quay.io/${{ github.repository }}/implementation:latest
 
   deploy-vps:
     needs: [build-worker, build-dashboard, build-implementation]  # Agregar dependency
@@ -110,7 +110,7 @@ jobs:
             -e SC_PROFILE=nvidia \
             -e QUALITY_THRESHOLD=8.0 \
             -e MAX_IMPLEMENTATION_ITERATIONS=3 \
-            ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+            quay.io/os-santiago/homedir-ai-sdlc/implementation:latest
 ```
 
 **Pod final:**
@@ -166,7 +166,7 @@ Push to main (paths: future-go/components/implementation/**)
   ↓
 GitHub Actions: build-implementation
   ├─ Build Containerfile
-  └─ Push to ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+  └─ Push to quay.io/os-santiago/homedir-ai-sdlc/implementation:latest
   ↓
 GitHub Actions: deploy-vps
   ├─ SSH to VPS
@@ -185,11 +185,11 @@ Verification
 
 ## Registry Note
 
-**Usuario mencionó quay.io** pero proyecto usa **ghcr.io**
+**Usuario mencionó quay.io** pero proyecto usa **quay.io**
 
 Referencias a quay.io encontradas son del proyecto **homedir** (main app), NO homedir-ai-sdlc:
 - `.local-test/worktrees/homedir/` contiene referencias a quay.io
-- Proyecto AI-SDLC usa exclusivamente ghcr.io
+- Proyecto AI-SDLC usa exclusivamente quay.io
 
 ---
 
