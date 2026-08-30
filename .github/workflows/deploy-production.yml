@@ -18,9 +18,9 @@ on:
 
 env:
   REGISTRY: quay.io
-  IMAGE_WORKER: quay.io/os-santiago/homedir-ai-sdlc-worker
-  IMAGE_DASHBOARD: quay.io/os-santiago/homedir-ai-sdlc-dashboard
-  IMAGE_IMPLEMENTATION: quay.io/os-santiago/homedir-ai-sdlc-implementation
+  IMAGE_WORKER: quay.io/os-santiago/homedir-ai:worker
+  IMAGE_DASHBOARD: quay.io/os-santiago/homedir-ai:dashboard
+  IMAGE_IMPLEMENTATION: quay.io/os-santiago/homedir-ai:implementation
 
 jobs:
   build-worker:
