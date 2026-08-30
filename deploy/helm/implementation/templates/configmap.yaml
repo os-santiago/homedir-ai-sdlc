@@ -1,0 +1,13 @@
+{{- if .Values.scAgentConfig.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "implementation.fullname" . }}-scagent
+  labels:
+    {{- include "implementation.labels" . | nindent 4 }}
+data:
+  profiles.json: |
+    [
+      {{ .Values.scAgentConfig.profile | nindent 6 }}
+    ]
+{{- end }}

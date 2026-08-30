@@ -3,36 +3,45 @@ FROM golang:1.24-alpine AS builder
 WORKDIR /build
 
 # Copy go mod files
-COPY go.mod ./
+COPY future-go/components/implementation/go.mod ./
 RUN go mod download
 
 # Copy source
-COPY . .
+COPY future-go/components/implementation/ ./
 
-# Build
-RUN go build -o implementation-service ./cmd
+# Build with CGO disabled for static binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o implementation-service ./cmd
 
 # Runtime image
 FROM alpine:latest
 
-# Install sc-agent-cli dependencies
-RUN apk add --no-cache nodejs npm
-
-# Install sc-agent-cli globally
-RUN npm install -g @sc-agent/cli
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates curl
 
 WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /build/implementation-service .
 
+# Create non-root user
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
 # Expose port
 EXPOSE 8082
 
 # Default environment
 ENV PORT=8082
+ENV SC_AGENT_PATH=/usr/local/bin/scc
 ENV SC_PROFILE=qwen3.6
 ENV MAX_IMPLEMENTATION_ITERATIONS=3
 ENV QUALITY_THRESHOLD=8.0
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8082/health || exit 1
 
 CMD ["./implementation-service"]

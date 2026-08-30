@@ -1,0 +1,125 @@
+# Default values for implementation service
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/os-santiago/homedir-ai-sdlc/implementation
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# Implementation service configuration
+config:
+  # Port for HTTP API
+  port: 8082
+
+  # sc-agent-cli configuration
+  scAgent:
+    path: /usr/local/bin/scc
+    profile: qwen3.6
+
+  # Quality thresholds
+  quality:
+    threshold: 8.0
+    maxIterations: 3
+
+  # LLM provider (mounted as secret or configmap)
+  llm:
+    baseUrl: http://ollama.homedir-ai-sdlc.svc.cluster.local:11434/v1
+    model: qwen3.6:latest
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8082
+  targetPort: 8082
+  annotations: {}
+
+# Resource limits
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# Autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Liveness and readiness probes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8082
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8082
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Monitoring
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    path: /metrics
+  prometheusRule:
+    enabled: false
+
+# ConfigMap for sc-agent-cli profile
+scAgentConfig:
+  create: true
+  profile: |
+    {
+      "name": "qwen3.6",
+      "baseUrl": "http://ollama.homedir-ai-sdlc.svc.cluster.local:11434/v1",
+      "model": "qwen3.6:latest"
+    }

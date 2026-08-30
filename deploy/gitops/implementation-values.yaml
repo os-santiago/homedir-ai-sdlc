@@ -1,0 +1,66 @@
+# Production values for implementation service
+
+image:
+  repository: ghcr.io/os-santiago/homedir-ai-sdlc/implementation
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "4"
+    memory: 4Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+config:
+  port: 8082
+  scAgent:
+    path: /usr/local/bin/scc
+    profile: qwen3.6
+  quality:
+    threshold: 8.0
+    maxIterations: 3
+  llm:
+    # Assumes Ollama deployed in same namespace
+    baseUrl: http://ollama.homedir-ai-sdlc.svc.cluster.local:11434/v1
+    model: qwen3.6:latest
+
+service:
+  type: ClusterIP
+  port: 8082
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8082"
+    prometheus.io/path: "/metrics"
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+nodeSelector:
+  node-role.kubernetes.io/worker: "true"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - implementation
+          topologyKey: kubernetes.io/hostname

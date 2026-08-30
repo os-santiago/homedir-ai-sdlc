@@ -1,0 +1,17 @@
+apiVersion: v2
+name: implementation
+description: AI-SDLC Implementation Service - Multi-pass code generation with quality feedback
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/os-santiago/homedir-ai-sdlc
+sources:
+  - https://github.com/os-santiago/homedir-ai-sdlc
+maintainers:
+  - name: os-santiago
+    email: hello@opensourcesantiago.io
+keywords:
+  - ai-sdlc
+  - implementation
+  - code-generation
+  - quality-feedback
