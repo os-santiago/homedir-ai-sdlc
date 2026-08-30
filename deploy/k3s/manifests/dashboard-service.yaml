@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-sdlc-dashboard
+  namespace: homedir-ai-sdlc
+  labels:
+    app: dashboard
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: http
+      nodePort: 30080  # Fixed port for Caddy reverse proxy
+      protocol: TCP
+      name: http
+  selector:
+    app: dashboard

@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-sdlc-dashboard
+  namespace: homedir-ai-sdlc
+  labels:
+    app: dashboard
+    component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+        component: observability
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: dashboard
+          image: ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest
+          imagePullPolicy: Always
+
+          envFrom:
+            - configMapRef:
+                name: ai-sdlc-config
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/homedir-sdlc
+              readOnly: true  # Dashboard only reads state
+
+          # Minimal resources for dashboard
+          resources:
+            requests:
+              cpu: 50m       # 0.05 vCPU
+              memory: 128Mi  # 128MB
+            limits:
+              cpu: 300m      # Max 0.3 vCPU
+              memory: 512Mi  # Max 512MB
+
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: ai-sdlc-state  # Shares worker's PVC

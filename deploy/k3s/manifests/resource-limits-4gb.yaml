@@ -1,0 +1,19 @@
+# Resource limits patch for 4GB VPS
+# This file is applied as a patch in kustomization.yaml
+
+# Worker limits for 4GB VPS
+- op: replace
+  path: /spec/template/spec/containers/0/resources/requests/cpu
+  value: "250m"
+
+- op: replace
+  path: /spec/template/spec/containers/0/resources/requests/memory
+  value: "512Mi"
+
+- op: replace
+  path: /spec/template/spec/containers/0/resources/limits/cpu
+  value: "1"
+
+- op: replace
+  path: /spec/template/spec/containers/0/resources/limits/memory
+  value: "2Gi"
