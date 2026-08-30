@@ -116,6 +116,10 @@ RUN mkdir -p /.sc-agent && \
     cp /etc/skel/.sc-agent/config.json /.sc-agent/ && \
     chmod -R 777 /.sc-agent
 
+# Copy entrypoint script
+COPY future-go/components/implementation/entrypoint.sh ./
+RUN chmod +x ./entrypoint.sh
+
 # Rootless compatibility (no USER directive - runs as any UID)
 RUN chmod -R 755 /app
 
@@ -134,4 +138,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8082/health || exit 1
 
 # Run as any UID (rootless compatible)
-CMD ["./implementation-service"]
+CMD ["./entrypoint.sh"]
