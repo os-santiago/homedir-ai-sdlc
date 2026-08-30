@@ -43,54 +43,8 @@ RUN echo "Installing sc-agent-cli..." && \
     chmod +x /usr/local/bin/scc && \
     scc --version || (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
-# Configure sc-agent-cli with qwen profile (same as local config)
-RUN mkdir -p /etc/skel/.sc-agent && \
-    cat > /etc/skel/.sc-agent/config.json <<'EOF'
-{
-  "model": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
-    "model": "Qwen3.6-35B-A3B",
-    "temperature": 0.7,
-    "maxTokens": 4096,
-    "stream": true,
-    "timeout": 120000
-  },
-  "permissions": {
-    "autoApprove": [
-      "read_file",
-      "list_dir",
-      "search_text",
-      "web_fetch",
-      "memory_read",
-      "run_shell",
-      "write_file",
-      "edit_file"
-    ],
-    "denyPaths": [
-      ".env",
-      ".env.*",
-      "**/*.key",
-      "**/*.pem"
-    ]
-  },
-  "profiles": {
-    "qwen": {
-      "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
-      "model": "Qwen3.6-35B-A3B",
-      "temperature": 0.7,
-      "maxTokens": 4096,
-      "timeout": 120000,
-      "apiKey": "sk-GmZO20unlgM0ATKV59VBAQ"
-    },
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
-      "model": "llama3.2"
-    }
-  },
-  "activeProfile": "qwen"
-}
-EOF
+# Configure sc-agent-cli with NVIDIA direct API (more reliable than LiteLLM)
+COPY future-go/components/implementation/config-nvidia.json /etc/skel/.sc-agent/config.json
 
 # ============================================================================
 # Build Implementation Service
