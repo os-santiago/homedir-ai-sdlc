@@ -82,7 +82,7 @@ func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
 		if err != nil {
 			log.Printf("[iterator] Review failed at attempt %d: %v", attemptNum, err)
 			// Continue without score if review fails
-			score := QualityScore{
+			score := quality.QualityScore{
 				Overall: 5.0,
 				Issues:  []string{"Quality review failed"},
 			}
@@ -98,7 +98,7 @@ func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
 		if err != nil {
 			log.Printf("[iterator] Failed to parse review at attempt %d: %v", attemptNum, err)
 			// Use default score if parsing fails
-			score = QualityScore{
+			score = quality.QualityScore{
 				Overall: 5.0,
 				Issues:  []string{"Review parsing failed"},
 			}
