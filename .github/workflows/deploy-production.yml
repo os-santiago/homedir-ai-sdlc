@@ -206,13 +206,13 @@ jobs:
           DASHBOARD_BUILD_SUCCESS: ${{ needs.build-dashboard.result == 'success' }}
           IMPLEMENTATION_BUILD_SUCCESS: ${{ needs.build-implementation.result == 'success' }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          envs: GITHUB_SHA,WORKER_BUILD_SUCCESS,DASHBOARD_BUILD_SUCCESS,IMPLEMENTATION_BUILD_SUCCESS,GH_TOKEN,NVIDIA_API_KEY
+          envs: GITHUB_SHA,WORKER_BUILD_SUCCESS,DASHBOARD_BUILD_SUCCESS,IMPLEMENTATION_BUILD_SUCCESS,GH_TOKEN,OPENAI_API_KEY
           script: |
             set -e
 
@@ -330,11 +330,19 @@ jobs:
                 --name ai-sdlc-implementation \
                 --restart unless-stopped \
                 -e PORT=8082 \
+<<<<<<< HEAD
                 -e SC_PROFILE=nvidia \
                 -e SC_AGENT_PATH=/usr/local/bin/scc \
                 -e MAX_IMPLEMENTATION_ITERATIONS=3 \
                 -e QUALITY_THRESHOLD=8.0 \
                 -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
+=======
+                -e SC_PROFILE=openai \
+                -e SC_AGENT_PATH=/usr/local/bin/scc \
+                -e MAX_IMPLEMENTATION_ITERATIONS=3 \
+                -e QUALITY_THRESHOLD=8.0 \
+                -e OPENAI_API_KEY="${OPENAI_API_KEY}" \
+>>>>>>> 0bcb78d34b0917fbc9f2584ab0060739a65fedcb
                 ${{ env.REPOSITORY }}:implementation-latest
 
               # Verify implementation is running

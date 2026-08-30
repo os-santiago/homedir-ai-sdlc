@@ -43,8 +43,8 @@ RUN echo "Installing sc-agent-cli..." && \
     chmod +x /usr/local/bin/scc && \
     scc --version || (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
-# Configure sc-agent-cli with NVIDIA direct API (more reliable than LiteLLM)
-COPY future-go/components/implementation/config-nvidia.json /etc/skel/.sc-agent/config.json
+# Configure sc-agent-cli with OpenAI (reliable and widely available)
+COPY future-go/components/implementation/config-openai.json /etc/skel/.sc-agent/config.json
 
 # ============================================================================
 # Build Implementation Service
