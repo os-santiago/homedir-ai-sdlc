@@ -8,5 +8,14 @@ if [ ! -d "${HOME}/.sc-agent" ]; then
     cp -r /.sc-agent/config.json "${HOME}/.sc-agent/"
 fi
 
+# If NVIDIA_API_KEY is set, inject it into the config
+if [ -n "${NVIDIA_API_KEY:-}" ]; then
+    echo "Configuring NVIDIA API key from environment..."
+    jq --arg key "$NVIDIA_API_KEY" \
+       '.profiles.nvidia.apiKey = $key | .profiles."nvidia-fast".apiKey = $key' \
+       "${HOME}/.sc-agent/config.json" > "${HOME}/.sc-agent/config.json.tmp" && \
+       mv "${HOME}/.sc-agent/config.json.tmp" "${HOME}/.sc-agent/config.json"
+fi
+
 # Execute the implementation service
 exec ./implementation-service
