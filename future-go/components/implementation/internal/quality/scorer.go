@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/os-santiago/homedir-ai-sdlc/components/implementation/internal/implementation"
 )
 
 // Scorer parses AI review output into structured quality score
@@ -17,7 +15,7 @@ func NewScorer() *Scorer {
 }
 
 // ParseReview extracts quality score from AI review JSON response
-func (s *Scorer) ParseReview(reviewText string) (implementation.QualityScore, error) {
+func (s *Scorer) ParseReview(reviewText string) (QualityScore, error) {
 	reviewText = extractJSON(reviewText)
 
 	var rawScore struct {
@@ -33,10 +31,10 @@ func (s *Scorer) ParseReview(reviewText string) (implementation.QualityScore, er
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&rawScore); err != nil {
-		return implementation.QualityScore{}, fmt.Errorf("failed to parse review JSON: %w\nRaw text: %s", err, reviewText)
+		return QualityScore{}, fmt.Errorf("failed to parse review JSON: %w\nRaw text: %s", err, reviewText)
 	}
 
-	score := implementation.QualityScore{
+	score := QualityScore{
 		Correctness:   rawScore.Correctness,
 		Completeness:  rawScore.Completeness,
 		CodeQuality:   rawScore.CodeQuality,
@@ -81,7 +79,7 @@ func extractJSON(text string) string {
 }
 
 // validateScore ensures all dimension scores are in valid range [0, 10]
-func validateScore(score implementation.QualityScore) error {
+func validateScore(score QualityScore) error {
 	scores := map[string]float64{
 		"correctness":    score.Correctness,
 		"completeness":   score.Completeness,
