@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-sdlc-worker
+  namespace: homedir-ai-sdlc
+  labels:
+    app: worker
+    component: autonomous-engine
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Can't have multiple workers on same PVC
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+        component: autonomous-engine
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: worker
+          image: ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest
+          imagePullPolicy: Always
+
+          envFrom:
+            - configMapRef:
+                name: ai-sdlc-config
+
+          env:
+            - name: GH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ai-sdlc-secrets
+                  key: gh-token
+
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-sdlc-secrets
+                  key: nvidia-api-key
+
+            - name: HOMEDIR_SDLC_WORKER_VERSION
+              value: "k3s-vps-optimized"
+
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/homedir-sdlc
+
+            - name: worktrees
+              mountPath: /srv/homedir-sdlc/worktrees
+
+            - name: logs
+              mountPath: /var/log/homedir-sdlc
+
+          # Optimized for 4GB VPS
+          resources:
+            requests:
+              cpu: 250m      # 0.25 vCPU
+              memory: 512Mi  # 512MB
+            limits:
+              cpu: "1"       # Max 1 vCPU (50% of 2 vCPU VPS)
+              memory: 2Gi    # Max 2GB (50% of 4GB VPS)
+
+          # Health checks based on heartbeat file
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  HEARTBEAT_FILE="/var/lib/homedir-sdlc/heartbeat.json"
+                  if [ ! -f "$HEARTBEAT_FILE" ]; then exit 1; fi
+                  LAST_BEAT=$(jq -r '.last_beat // ""' "$HEARTBEAT_FILE")
+                  if [ -z "$LAST_BEAT" ]; then exit 1; fi
+                  NOW=$(date -u +%s)
+                  LAST_BEAT_EPOCH=$(date -d "$LAST_BEAT" +%s 2>/dev/null || echo 0)
+                  AGE=$((NOW - LAST_BEAT_EPOCH))
+                  if [ $AGE -gt 600 ]; then exit 1; fi
+                  exit 0
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f /var/lib/homedir-sdlc/heartbeat.json
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false  # Worker needs to write
+
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: ai-sdlc-state
+
+        - name: worktrees
+          persistentVolumeClaim:
+            claimName: ai-sdlc-worktrees
+
+        - name: logs
+          emptyDir: {}
+
+      # Optional: Node affinity for VPS
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
