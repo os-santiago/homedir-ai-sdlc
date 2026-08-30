@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-sdlc-config
+  namespace: homedir-ai-sdlc
+data:
+  # Repository configuration
+  HOMEDIR_SDLC_REPO: "os-santiago/homedir"
+
+  # Labels
+  HOMEDIR_SDLC_TRIGGER_LABEL: "ready-to-implement"
+  HOMEDIR_SDLC_QUEUE_LABEL: "scc-queued"
+  HOMEDIR_SDLC_REJECTED_LABEL: "scc-rejected"
+  HOMEDIR_SDLC_RUNNING_LABEL: "scc-running"
+  HOMEDIR_SDLC_PR_LABEL: "scc-pr-open"
+  HOMEDIR_SDLC_APPROVED_LABEL: "scc-approved"
+  HOMEDIR_SDLC_MERGED_LABEL: "scc-merged"
+  HOMEDIR_SDLC_FAILED_LABEL: "scc-failed"
+  HOMEDIR_SDLC_NEEDS_HUMAN_LABEL: "needs-human"
+
+  # Paths
+  HOMEDIR_SDLC_STATE_DIR: "/var/lib/homedir-sdlc"
+  HOMEDIR_SDLC_WORKDIR: "/srv/homedir-sdlc/worktrees/homedir"
+  HOMEDIR_SDLC_LOGFILE: "/var/log/homedir-sdlc/worker.log"
+  PLATFORM_DIR: "/app"
+
+  # Worker settings
+  HOMEDIR_SDLC_MAX_ISSUES_PER_RUN: "1"
+  HOMEDIR_SDLC_INTERVAL: "180"  # 3 minutes
+  HOMEDIR_SDLC_GIT_USER_NAME: "homedir-sdlc[bot]"
+  HOMEDIR_SDLC_GIT_USER_EMAIL: "homedir-sdlc@users.noreply.github.com"
+
+  # SCC configuration (optimized for VPS)
+  SCC_BIN: "scc"
+  SCC_TIMEOUT_SECONDS: "600"  # 10 minutes
+  SCC_CLEAR_HISTORY: "true"
+  SCC_PROFILE: "nvidia"
+  SCC_PERMISSIONS: "unlimited"
+
+  # Features
+  HOMEDIR_SDLC_ENABLE_AUTOMERGE: "true"
+  ENHANCED_ADMISSION_ENABLED: "true"
+  ENHANCED_VALIDATION_ENABLED: "true"
+  CODERABBIT_INTEGRATION_ENABLED: "true"
+
+  # Dashboard settings
+  HOMEDIR_SDLC_DASHBOARD_SNAPSHOT_INTERVAL: "30s"
+  HOMEDIR_SDLC_DASHBOARD_CONTROLS_ENABLED: "false"
+  HOMEDIR_SDLC_DASHBOARD_MAX_EVENTS: "1000"  # Reduced for memory
+  HOMEDIR_SDLC_DASHBOARD_MAX_FILES_PER_CYCLE: "100"  # Reduced
+  HOMEDIR_SDLC_DASHBOARD_MAX_BYTES_PER_CYCLE: "32768"  # Reduced
+  QUARKUS_HTTP_PORT: "8080"
