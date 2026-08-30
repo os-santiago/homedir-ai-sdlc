@@ -28,6 +28,7 @@ func NewClient() *Client {
 func (c *Client) GenerateCode(prompt string) (string, error) {
 	cmd := exec.Command(c.BinaryPath, "-yq", prompt)
 	cmd.Env = append(os.Environ(),
+		"NO_COLOR=1", // Disable ANSI escape codes for clean JSON parsing
 		fmt.Sprintf("SC_MAX_ITERATIONS=%d", c.MaxIter),
 		fmt.Sprintf("SC_PROFILE=%s", c.Profile),
 	)
