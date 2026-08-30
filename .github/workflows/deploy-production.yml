@@ -191,24 +191,14 @@ jobs:
             ${{ env.REPOSITORY }}:implementation-latest \
             --help || echo "Service doesn't support --help (expected)"
 
-  deploy-vps:
-    name: Deploy to VPS
+  notify-deployment:
+    name: Trigger Deployment
     runs-on: ubuntu-latest
-    # Allow deployment to proceed even if one component fails
-    # This enables partial deployment (e.g., worker succeeds but dashboard fails)
     needs: [build-worker, build-dashboard, build-implementation]
-    if: always() && needs.build-worker.result == 'success'
-    # Deploy is optional - will skip if secrets not configured
-    continue-on-error: true
-    environment:
-      name: production
-      url: https://homedir-ai-sdlc.opensourcesantiago.io
+    if: always()
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Deploy to VPS via SSH
+      - name: Report build status
         uses: appleboy/ssh-action@v1.2.5
         env:
           GITHUB_SHA: ${{ github.sha }}
@@ -223,7 +213,6 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           envs: GITHUB_SHA,WORKER_BUILD_SUCCESS,DASHBOARD_BUILD_SUCCESS,IMPLEMENTATION_BUILD_SUCCESS,GH_TOKEN,NVIDIA_API_KEY
-          script_stop: false
           script: |
             set -e
 
@@ -266,11 +255,11 @@ jobs:
             podman pod stop ai-sdlc 2>/dev/null || true
             podman pod rm ai-sdlc 2>/dev/null || true
 
-            # Create new pod
+            # Create new pod (port 8083 to avoid conflict with ai-sdlc-events on 8081)
             echo "Creating new pod..."
             podman pod create \
               --name ai-sdlc \
-              -p 8081:8080
+              -p 8083:8080
 
             # Deploy worker (always - this job only runs if worker build succeeded)
             if [ "$WORKER_BUILD_SUCCESS" = "true" ]; then
@@ -383,7 +372,8 @@ jobs:
             echo ""
             echo "Deployment complete!"
             if [ "$DASHBOARD_BUILD_SUCCESS" = "true" ]; then
-              echo "Dashboard: https://homedir-ai-sdlc.opensourcesantiago.io"
+              echo "Dashboard: http://localhost:8083 (internal)"
+              echo "Public URL: https://homedir-ai-sdlc.opensourcesantiago.io"
             fi
 
       - name: Verify deployment
@@ -411,7 +401,7 @@ jobs:
             # Test dashboard endpoint
             echo ""
             echo "=== Dashboard Health Check ==="
-            curl -f http://localhost:8081/q/health/live || echo "Dashboard not ready yet"
+            curl -f http://localhost:8083/q/health/live || echo "Dashboard not ready yet"
 
       - name: Create deployment summary
         run: |
@@ -431,9 +421,9 @@ jobs:
 
           ## Architecture
           \`\`\`
-          Pod: ai-sdlc (port 8081 → dashboard:8080)
+          Pod: ai-sdlc (port 8083 → dashboard:8080)
           ├── ai-sdlc-worker (internal)
-          ├── ai-sdlc-dashboard (8080 → pod 8081)
+          ├── ai-sdlc-dashboard (8080 → pod 8083)
           └── ai-sdlc-implementation (8082, internal)
           \`\`\`
 
