@@ -1,196 +1,129 @@
 # Implementation Service Deployment
 
-Complete GitOps deployment guide for the Implementation Service following project standards.
+Deployment guide for Implementation Service following the actual Podman-based architecture.
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         GitHub Repository                        │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Push to main → CI/CD Pipeline                             │ │
-│  │  1. Build OCI image (GitHub Actions)                       │ │
-│  │  2. Push to ghcr.io                                        │ │
-│  │  3. ArgoCD auto-sync                                       │ │
-│  │  4. Deploy to K3s                                          │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│              GitHub Container Registry (ghcr.io)                │
-│  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest      │
-│  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:<sha>       │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                   ArgoCD (GitOps Controller)                    │
-│  Application: ai-sdlc-implementation                            │
-│  Sync Policy: Automated (prune + self-heal)                     │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│          K3s Cluster (namespace: homedir-ai-sdlc)               │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Deployment: ai-sdlc-implementation                      │  │
-│  │  - Replicas: 2 (autoscaling 2-10)                       │  │
-│  │  - Resources: 500m CPU / 512Mi RAM (request)            │  │
-│  │  - Image: ghcr.io/.../implementation:latest             │  │
-│  │  - Health checks: /health endpoint                      │  │
-│  │  - ConfigMap: sc-agent profile                          │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Service: ai-sdlc-implementation                         │  │
-│  │  - Type: ClusterIP                                       │  │
-│  │  - Port: 8082                                            │  │
-│  │  - DNS: implementation.homedir-ai-sdlc.svc.cluster.local │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  HorizontalPodAutoscaler                                 │  │
-│  │  - Min: 2, Max: 10                                       │  │
-│  │  - Target: 75% CPU / 80% Memory                          │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              ↑
-┌─────────────────────────────────────────────────────────────────┐
-│                   Worker (Client Consumer)                      │
-│  curl -X POST \                                                 │
-│    http://ai-sdlc-implementation:8082/api/implementation/generate│
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    GitHub Repository                        │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Push to main → GitHub Actions                       │   │
+│  │  1. Build OCI images                                 │   │
+│  │  2. Push to ghcr.io                                  │   │
+│  │  3. SSH deploy to VPS                                │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│           ghcr.io (GitHub Container Registry)               │
+│  - ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest        │
+│  - ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest     │
+│  - ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest│
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│                VPS Production Server                        │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Podman Pod: ai-sdlc (port 8081:8080)               │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │  Container: ai-sdlc-worker (internal)          │ │   │
+│  │  │  - Autonomous issue processing                 │ │   │
+│  │  │  - Calls implementation service at localhost   │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │  Container: ai-sdlc-dashboard (8080)           │ │   │
+│  │  │  - Exposed as pod port 8081                    │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │  Container: ai-sdlc-implementation (8082)      │ │   │
+│  │  │  - Multi-pass code generation                  │ │   │
+│  │  │  - Quality feedback loops                      │ │   │
+│  │  │  - Internal service (not exposed)              │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Deployment Methods
+## Deployment Flow
 
-### Method 1: GitOps with ArgoCD (Production - Recommended)
-
-**Fully automated, zero-touch deployment:**
+### Automatic Deployment (Production)
 
 ```bash
-# 1. Apply ArgoCD Application (one-time)
-kubectl apply -f deploy/argocd/implementation-app.yaml
+# 1. Developer pushes to main
+git push origin main
 
-# 2. ArgoCD auto-syncs on every push to main
-# No manual intervention required!
-
-# 3. Monitor deployment
-argocd app get ai-sdlc-implementation
-argocd app sync ai-sdlc-implementation  # Manual sync if needed
+# 2. GitHub Actions automatically:
+#    - Builds worker, dashboard, implementation images
+#    - Pushes to ghcr.io
+#    - SSH to VPS
+#    - Stops existing pod
+#    - Creates new pod with all 3 containers
+#    - Verifies health
 ```
 
-**Benefits:**
-- ✅ Automatic deployment on git push
-- ✅ Self-healing (reverts manual changes)
-- ✅ Automatic pruning of deleted resources
-- ✅ Rollback to any previous version
-- ✅ Audit trail in Git
+**Zero manual steps required!**
 
-### Method 2: Helm Install (Manual)
+### Service Discovery
 
-**For testing/development:**
+Containers in the same pod share `localhost`:
 
 ```bash
-# 1. Install Helm chart
-helm install ai-sdlc-implementation ./deploy/helm/implementation \
-  --namespace homedir-ai-sdlc \
-  --create-namespace \
-  --values ./deploy/gitops/implementation-values.yaml
+# Worker → Implementation Service
+curl http://localhost:8082/api/implementation/generate
 
-# 2. Verify deployment
-kubectl get pods -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
+# Worker → Dashboard
+curl http://localhost:8080/q/health
 
-# 3. Upgrade
-helm upgrade ai-sdlc-implementation ./deploy/helm/implementation \
-  --namespace homedir-ai-sdlc \
-  --values ./deploy/gitops/implementation-values.yaml
+# Implementation → (no outbound calls)
 ```
 
-### Method 3: GitHub Actions Workflow (CI/CD)
-
-**Triggered automatically on push to main:**
-
-```yaml
-# .github/workflows/deploy-implementation.yml
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'future-go/components/implementation/**'
-      - 'deploy/helm/implementation/**'
-```
-
-**Manual trigger:**
-
-```bash
-gh workflow run deploy-implementation.yml
-```
+**External access:**
+- Dashboard: `https://homedir-ai-sdlc.opensourcesantiago.io` (nginx → pod:8081 → dashboard:8080)
+- Worker: Internal only
+- Implementation: Internal only
 
 ## Configuration
 
-### Environment Variables
+### Environment Variables (VPS)
 
-Set via Helm values (`deploy/gitops/implementation-values.yaml`):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8082` | HTTP server port |
-| `SC_AGENT_PATH` | `/usr/local/bin/scc` | Path to sc-agent-cli binary |
-| `SC_PROFILE` | `qwen3.6` | sc-agent-cli profile name |
-| `MAX_IMPLEMENTATION_ITERATIONS` | `3` | Max generation attempts |
-| `QUALITY_THRESHOLD` | `8.0` | Min score to accept (0-10) |
-
-### LLM Provider Configuration
-
-ConfigMap mounted at `/home/appuser/.config/sc-agent/profiles.json`:
-
-```json
-[
-  {
-    "name": "qwen3.6",
-    "baseUrl": "http://ollama.homedir-ai-sdlc.svc.cluster.local:11434/v1",
-    "model": "qwen3.6:latest"
-  }
-]
-```
-
-**Prerequisites:**
-- Ollama deployed in same namespace
-- qwen3.6 model pulled: `kubectl exec deployment/ollama -- ollama pull qwen3.6`
-
-### Resource Limits
-
-**Production (deploy/gitops/implementation-values.yaml):**
-
-```yaml
-resources:
-  requests:
-    cpu: 500m
-    memory: 512Mi
-  limits:
-    cpu: "4"
-    memory: 4Gi
-
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 75
-```
-
-## Service Discovery
-
-Worker calls implementation service via Kubernetes DNS:
+Implementation service configured via podman run:
 
 ```bash
-# Full FQDN
-http://ai-sdlc-implementation.homedir-ai-sdlc.svc.cluster.local:8082
+podman run -d \
+  --pod ai-sdlc \
+  --name ai-sdlc-implementation \
+  --restart unless-stopped \
+  -e PORT=8082 \
+  -e SC_PROFILE=nvidia \
+  -e SC_AGENT_PATH=/usr/local/bin/scc \
+  -e MAX_IMPLEMENTATION_ITERATIONS=3 \
+  -e QUALITY_THRESHOLD=8.0 \
+  -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
+  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+```
 
-# Short form (same namespace)
-http://ai-sdlc-implementation:8082
+### sc-agent-cli Configuration
 
-# Example worker integration
-IMPLEMENTATION_SERVICE_URL="http://ai-sdlc-implementation:8082"
-response=$(curl -X POST ${IMPLEMENTATION_SERVICE_URL}/api/implementation/generate \
-  -H "Content-Type: application/json" \
-  -d '{"issue_number": 123, ...}')
+Bundled in container at `/.sc-agent/config.json`:
+
+```json
+{
+  "model": {
+    "provider": "openai-compatible",
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "temperature": 1,
+    "maxTokens": 16384
+  },
+  "profiles": {
+    "nvidia": {
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b"
+    }
+  },
+  "activeProfile": "nvidia"
+}
 ```
 
 ## Monitoring
@@ -198,263 +131,276 @@ response=$(curl -X POST ${IMPLEMENTATION_SERVICE_URL}/api/implementation/generat
 ### Health Checks
 
 ```bash
-# Liveness probe
-kubectl exec -n homedir-ai-sdlc deployment/ai-sdlc-implementation -- \
-  curl -f http://localhost:8082/health
+# From VPS
+podman exec ai-sdlc-implementation curl http://localhost:8082/health
 
 # Expected response:
-# {"status":"ok","service":"implementation"}
+{"status":"ok","service":"implementation"}
 ```
 
 ### Logs
 
 ```bash
 # Follow logs
-kubectl logs -f -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
+podman logs -f ai-sdlc-implementation
 
 # Last 100 lines
-kubectl logs -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation --tail=100
+podman logs --tail 100 ai-sdlc-implementation
 
-# Specific pod
-POD=$(kubectl get pod -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation -o jsonpath='{.items[0].metadata.name}')
-kubectl logs -f $POD -n homedir-ai-sdlc
+# Check all containers in pod
+podman pod logs ai-sdlc
 ```
 
-### Metrics
+### Container Status
 
-**Prometheus ServiceMonitor** (when `monitoring.enabled: true`):
+```bash
+# Pod status
+podman pod ps | grep ai-sdlc
 
-```yaml
-monitoring:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-    interval: 30s
+# Container status
+podman ps --filter "pod=ai-sdlc"
+
+# Detailed inspection
+podman inspect ai-sdlc-implementation
 ```
-
-**Metrics endpoint:** `http://ai-sdlc-implementation:8082/metrics`
 
 ## Troubleshooting
 
-### Pod Not Starting
+### Container Not Starting
 
 ```bash
-# Check pod status
-kubectl get pods -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
-
-# Describe pod for events
-kubectl describe pod -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
-
 # Check logs
-kubectl logs -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
+podman logs ai-sdlc-implementation
+
+# Check container status
+podman inspect ai-sdlc-implementation --format='{{.State.Status}}'
+
+# Verify image pulled
+podman images | grep implementation
+
+# Manual restart
+podman restart ai-sdlc-implementation
 ```
 
-### Service Not Reachable
+### Service Not Responding
 
 ```bash
-# Verify service exists
-kubectl get svc -n homedir-ai-sdlc ai-sdlc-implementation
+# Test health endpoint
+curl -v http://localhost:8082/health
 
-# Check endpoints
-kubectl get endpoints -n homedir-ai-sdlc ai-sdlc-implementation
+# Check if port is listening
+podman exec ai-sdlc-implementation netstat -tuln | grep 8082
 
-# Test from worker pod
-kubectl exec -n homedir-ai-sdlc deployment/ai-sdlc-worker -- \
-  curl -f http://ai-sdlc-implementation:8082/health
+# Verify environment variables
+podman inspect ai-sdlc-implementation --format='{{.Config.Env}}'
 ```
 
-### Image Pull Failures
+### High Memory Usage
 
 ```bash
-# Verify image exists
-docker pull ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+# Check resource usage
+podman stats ai-sdlc-implementation
 
-# Check imagePullSecrets (if private registry)
-kubectl get secret -n homedir-ai-sdlc
+# Check Go heap
+podman exec ai-sdlc-implementation ps aux
 
-# Check pod events
-kubectl describe pod -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation | grep -A5 Events
+# Restart if needed
+podman restart ai-sdlc-implementation
 ```
 
-### ArgoCD Sync Issues
+## Manual Deployment
+
+### Build Image Locally
 
 ```bash
-# Check sync status
-argocd app get ai-sdlc-implementation
+cd /path/to/homedir-ai-sdlc
 
-# View sync diff
-argocd app diff ai-sdlc-implementation
+# Build
+podman build -f future-go/components/implementation/Containerfile \
+  -t implementation:local .
 
-# Force sync
-argocd app sync ai-sdlc-implementation --force
+# Test
+podman run --rm \
+  -e PORT=8082 \
+  -e NVIDIA_API_KEY=test \
+  implementation:local
+```
 
-# Check ArgoCD logs
-kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller
+### Deploy to VPS Manually
+
+```bash
+# SSH to VPS
+ssh user@vps
+
+# Pull latest image
+podman pull ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+
+# Stop existing container (if running)
+podman stop ai-sdlc-implementation
+podman rm ai-sdlc-implementation
+
+# Start new container in pod
+podman run -d \
+  --pod ai-sdlc \
+  --name ai-sdlc-implementation \
+  --restart unless-stopped \
+  -e PORT=8082 \
+  -e SC_PROFILE=nvidia \
+  -e NVIDIA_API_KEY="your-key" \
+  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+
+# Verify
+podman logs --tail 20 ai-sdlc-implementation
+curl http://localhost:8082/health
+```
+
+## Integration with Worker
+
+Worker can call implementation service for multi-pass generation:
+
+```bash
+# In worker reconcile_implementing_issues()
+
+# Check if implementation service available
+if curl -sf http://localhost:8082/health > /dev/null 2>&1; then
+  # Use implementation service (multi-pass)
+  response=$(curl -X POST http://localhost:8082/api/implementation/generate \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"issue_number\": ${issue_number},
+      \"issue_body\": \"${issue_body}\",
+      \"acceptance_criteria\": ${criteria_json},
+      \"max_iterations\": 3,
+      \"quality_threshold\": 8.0
+    }")
+  
+  code=$(echo "$response" | jq -r '.code')
+  quality_score=$(echo "$response" | jq -r '.quality_score')
+  
+  log "Generated with quality ${quality_score}/10"
+else
+  # Fallback to direct SCC (single-shot)
+  code=$(scc_generate_code "${issue_number}")
+fi
+
+# Create PR with code
+create_pr "${issue_number}" "${code}"
 ```
 
 ## Rollback
 
-### Helm Rollback
+### To Previous Version
 
 ```bash
-# List releases
-helm history ai-sdlc-implementation -n homedir-ai-sdlc
+# SSH to VPS
+ssh user@vps
 
-# Rollback to previous
-helm rollback ai-sdlc-implementation -n homedir-ai-sdlc
+# Check available tags
+podman search ghcr.io/os-santiago/homedir-ai-sdlc/implementation --list-tags
 
-# Rollback to specific revision
-helm rollback ai-sdlc-implementation 3 -n homedir-ai-sdlc
+# Pull specific version (by commit SHA)
+podman pull ghcr.io/os-santiago/homedir-ai-sdlc/implementation:main-abc1234
+
+# Stop current
+podman stop ai-sdlc-implementation
+podman rm ai-sdlc-implementation
+
+# Start with old version
+podman run -d \
+  --pod ai-sdlc \
+  --name ai-sdlc-implementation \
+  --restart unless-stopped \
+  -e PORT=8082 \
+  -e SC_PROFILE=nvidia \
+  -e NVIDIA_API_KEY="your-key" \
+  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:main-abc1234
 ```
 
-### ArgoCD Rollback
-
-```bash
-# Rollback to previous sync
-argocd app rollback ai-sdlc-implementation
-
-# Rollback to specific revision
-argocd app rollback ai-sdlc-implementation 5
-```
-
-### Git Rollback
+### Via Git Revert
 
 ```bash
 # Revert commit
-git revert <commit-sha>
-git push origin main
-# ArgoCD auto-syncs to reverted state
-```
-
-## Scaling
-
-### Manual Scaling
-
-```bash
-# Scale replicas
-kubectl scale deployment ai-sdlc-implementation \
-  --replicas=5 \
-  -n homedir-ai-sdlc
-
-# Verify scaling
-kubectl get pods -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
-```
-
-### Autoscaling
-
-HPA automatically scales based on CPU/memory:
-
-```bash
-# Check HPA status
-kubectl get hpa -n homedir-ai-sdlc
-
-# Describe HPA for metrics
-kubectl describe hpa -n homedir-ai-sdlc ai-sdlc-implementation
-```
-
-## Updating
-
-### Code Changes
-
-```bash
-# 1. Push changes to main
+git revert <bad-commit-sha>
 git push origin main
 
-# 2. GitHub Actions builds new image
-# → ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
-
-# 3. ArgoCD detects image change and redeploys
-# (automatic within 3 minutes)
-
-# 4. Verify new version
-kubectl get pods -n homedir-ai-sdlc -l app.kubernetes.io/component=implementation
-kubectl logs -f deployment/ai-sdlc-implementation -n homedir-ai-sdlc
-```
-
-### Configuration Changes
-
-```bash
-# 1. Edit values
-vim deploy/gitops/implementation-values.yaml
-
-# 2. Commit and push
-git add deploy/gitops/implementation-values.yaml
-git commit -m "feat: increase implementation resources"
-git push origin main
-
-# 3. ArgoCD auto-syncs new values
-# No pod restart needed for config changes (unless resource limits changed)
-```
-
-## Security
-
-### Pod Security
-
-```yaml
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
-
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-  readOnlyRootFilesystem: false
-```
-
-### Network Policies
-
-```bash
-# Allow worker → implementation
-kubectl apply -f - <<EOF
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-worker-to-implementation
-  namespace: homedir-ai-sdlc
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/component: implementation
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: worker
-      ports:
-        - protocol: TCP
-          port: 8082
-EOF
+# GitHub Actions automatically redeploys previous version
 ```
 
 ## Performance
 
 ### Resource Usage
 
-**Typical per replica:**
-- CPU: 200-800m (under load)
-- Memory: 300-600Mi (under load)
-- Requests/sec: ~10-20 (multi-pass generation is slow)
+Typical per container:
+- **CPU:** 100-500m (idle), 1-2 cores (under load)
+- **Memory:** 200-400Mi (idle), 500Mi-1Gi (under load)
+- **Disk:** ~500Mi (image)
 
-**Scaling recommendations:**
-- < 50 issues/hour: 2 replicas
-- 50-200 issues/hour: 3-5 replicas
-- > 200 issues/hour: 5-10 replicas + faster model
+### Scaling
+
+Implementation service doesn't scale horizontally in current architecture (single pod).
+
+For high load:
+1. **Vertical scaling:** Increase VPS resources
+2. **Optimize iterations:** Reduce MAX_IMPLEMENTATION_ITERATIONS from 3 to 2
+3. **Faster model:** Use lighter model (trade quality for speed)
+
+## Security
+
+### Container Security
+
+```dockerfile
+# Non-root user (rootless compatible)
+# No USER directive - runs with --user at runtime
+
+# Capabilities dropped (inherited from pod)
+# Read-only root filesystem: false (needs /tmp)
+
+# Secrets via environment variables (not in image)
+ENV NVIDIA_API_KEY passed at runtime
+```
+
+### Network Isolation
+
+- Implementation service only accessible from within pod
+- No external ports exposed
+- Communicates only with worker via localhost
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow
+
+Located in `.github/workflows/deploy-production.yml`:
+
+```yaml
+jobs:
+  build-implementation:
+    # Build container image
+    # Push to ghcr.io
+  
+  deploy-vps:
+    needs: [build-worker, build-dashboard, build-implementation]
+    # SSH to VPS
+    # podman pod stop/rm ai-sdlc
+    # podman pod create ai-sdlc
+    # podman run worker
+    # podman run dashboard
+    # podman run implementation
+```
+
+**Triggers:**
+- Push to main (paths: `future-go/components/implementation/**`)
+- Manual workflow dispatch
 
 ## References
 
-- **Helm Chart:** [deploy/helm/implementation/](../../../deploy/helm/implementation/)
-- **GitOps Values:** [deploy/gitops/implementation-values.yaml](../../../deploy/gitops/implementation-values.yaml)
-- **ArgoCD App:** [deploy/argocd/implementation-app.yaml](../../../deploy/argocd/implementation-app.yaml)
-- **CI/CD Pipeline:** [.github/workflows/deploy-implementation.yml](../../../.github/workflows/deploy-implementation.yml)
-- **Service README:** [README.md](README.md)
+- **Container:** [future-go/components/implementation/Containerfile](Containerfile)
+- **Service Code:** [future-go/components/implementation/](.)
+- **CI/CD:** [.github/workflows/deploy-production.yml](../../../.github/workflows/deploy-production.yml)
+- **Architecture:** [ARCHITECTURE-ANALYSIS.md](../../../ARCHITECTURE-ANALYSIS.md)
 
 ---
 
 **Last Updated:** 2026-08-29  
-**Version:** 1.0.0  
-**Deployment Model:** GitOps with ArgoCD
+**Deployment Model:** Podman Pods on VPS  
+**Registry:** ghcr.io  
+**Status:** Production
