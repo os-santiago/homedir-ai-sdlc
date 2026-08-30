@@ -362,6 +362,81 @@ require_cmd() {
   fi
 }
 
+# ============================================================================
+# Implementation Service Integration
+# ============================================================================
+# Calls the Implementation HTTP service for multi-pass code generation
+# with quality feedback loops. Falls back to direct SCC if unavailable.
+
+IMPLEMENTATION_SERVICE_URL="${IMPLEMENTATION_SERVICE_URL:-http://localhost:8082}"
+
+call_implementation_service() {
+  local issue_number="$1"
+  local issue_body="$2"
+  local prompt="$3"
+
+  # Check if implementation service is available
+  if ! curl -sf --max-time 2 "${IMPLEMENTATION_SERVICE_URL}/health" >/dev/null 2>&1; then
+    log "Implementation service not available at ${IMPLEMENTATION_SERVICE_URL}"
+    return 1
+  fi
+
+  log "Calling implementation service for issue #${issue_number}"
+
+  # Extract acceptance criteria from issue body (lines starting with "- [ ]")
+  local acceptance_criteria
+  acceptance_criteria=$(echo "$issue_body" | grep -E '^\s*-\s*\[[ x]\]' | sed 's/^[[:space:]]*-[[:space:]]*\[[[:space:]x]*\][[:space:]]*//' | jq -R . | jq -s .)
+
+  # Build JSON request
+  local request_json
+  request_json=$(jq -n \
+    --arg num "$issue_number" \
+    --arg body "$issue_body" \
+    --argjson criteria "$acceptance_criteria" \
+    '{
+      issue_number: ($num | tonumber),
+      issue_body: $body,
+      acceptance_criteria: $criteria,
+      max_iterations: 3,
+      quality_threshold: 8.0
+    }')
+
+  # Call implementation service
+  local response
+  local http_code
+  http_code=$(curl -sf -X POST "${IMPLEMENTATION_SERVICE_URL}/api/implementation/generate" \
+    -H "Content-Type: application/json" \
+    -d "$request_json" \
+    -w "%{http_code}" \
+    -o /tmp/impl-response-${issue_number}.json \
+    --max-time 1800)  # 30 min timeout for iterative generation
+
+  if [[ "$http_code" != "200" ]]; then
+    log "Implementation service returned HTTP ${http_code}"
+    rm -f "/tmp/impl-response-${issue_number}.json"
+    return 1
+  fi
+
+  # Parse response
+  local code quality_score iterations_used
+  code=$(jq -r '.code' "/tmp/impl-response-${issue_number}.json")
+  quality_score=$(jq -r '.quality_score' "/tmp/impl-response-${issue_number}.json")
+  iterations_used=$(jq -r '.iterations_used' "/tmp/impl-response-${issue_number}.json")
+
+  rm -f "/tmp/impl-response-${issue_number}.json"
+
+  if [[ -z "$code" || "$code" == "null" ]]; then
+    log "Implementation service returned empty code"
+    return 1
+  fi
+
+  log "Implementation service completed: score=${quality_score}/10, iterations=${iterations_used}"
+
+  # Output code to stdout (same as SCC would)
+  echo "$code"
+  return 0
+}
+
 run_scc_prompt() {
   local prompt="$1"
   local issue_body="$2"
@@ -2832,10 +2907,27 @@ Begin implementation now. Use tools, do not narrate.
 EOF
 )"
 
-  log "running SCC for issue #${number}"
-  write_heartbeat "running" "SCC running for issue #${number}"
+  log "generating code for issue #${number}"
+  write_heartbeat "running" "Code generation for issue #${number}"
   local scc_rc
-  if run_scc_checked "${prompt}" "${body}"; then
+  local code_output
+
+  # Try implementation service first (with quality iterations)
+  if code_output=$(call_implementation_service "${number}" "${body}" "${prompt}" 2>&1); then
+    log "Implementation service succeeded for issue #${number}"
+    echo "$code_output"  # Output code to be captured by caller
+    scc_rc=0
+  else
+    # Fallback to direct SCC execution
+    log "Falling back to direct SCC execution for issue #${number}"
+    if run_scc_checked "${prompt}" "${body}"; then
+      scc_rc=0
+    else
+      scc_rc=$?
+    fi
+  fi
+
+  if [[ $scc_rc -eq 0 ]]; then
     :
   else
     scc_rc=$?
