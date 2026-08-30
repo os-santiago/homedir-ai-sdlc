@@ -244,6 +244,7 @@ jobs:
               'SCC_CLEAR_HISTORY=true' \
               'HOMEDIR_SDLC_INTERVAL=180' \
               'HOMEDIR_SDLC_ENABLE_AUTOMERGE=true' \
+              'IMPLEMENTATION_SERVICE_URL=http://localhost:8082' \
               "HOMEDIR_SDLC_WORKER_VERSION=${GITHUB_SHA}" \
               > /etc/homedir-sdlc/worker.env
 
