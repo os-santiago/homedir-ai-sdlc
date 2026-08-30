@@ -46,7 +46,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
+          password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Extract metadata
         id: meta
@@ -101,7 +101,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
+          password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Extract metadata
         id: meta
@@ -179,7 +179,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
+          password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Extract metadata
         id: meta
