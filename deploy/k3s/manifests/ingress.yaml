@@ -1,0 +1,31 @@
+# Note: K3s doesn't include ingress controller by default
+# This file is for reference if you install one later
+# For VPS deployment, use Caddy reverse proxy to NodePort instead
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-sdlc-dashboard
+  namespace: homedir-ai-sdlc
+  annotations:
+    # If using nginx-ingress
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # If using cert-manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx  # Change based on your ingress controller
+  rules:
+    - host: homedir-ai-sdlc.opensourcesantiago.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-sdlc-dashboard
+                port:
+                  number: 8080
+  tls:
+    - secretName: ai-sdlc-dashboard-tls
+      hosts:
+        - homedir-ai-sdlc.opensourcesantiago.io

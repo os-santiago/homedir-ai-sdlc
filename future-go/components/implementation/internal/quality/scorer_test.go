@@ -2,8 +2,6 @@ package quality
 
 import (
 	"testing"
-
-	"github.com/os-santiago/homedir-ai-sdlc/components/implementation/internal/implementation"
 )
 
 func TestParseReview_ValidJSON(t *testing.T) {
@@ -104,7 +102,7 @@ func TestParseReview_OutOfRange(t *testing.T) {
 }
 
 func TestQualityScore_CalculateOverall(t *testing.T) {
-	score := implementation.QualityScore{
+	score := QualityScore{
 		Correctness:   10.0,
 		Completeness:  10.0,
 		CodeQuality:   10.0,

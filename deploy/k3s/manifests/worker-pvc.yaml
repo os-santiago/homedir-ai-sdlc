@@ -1,0 +1,27 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-sdlc-state
+  namespace: homedir-ai-sdlc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path  # K3s default provisioner
+  resources:
+    requests:
+      storage: 5Gi  # Reduced from 10Gi for VPS
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-sdlc-worktrees
+  namespace: homedir-ai-sdlc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi  # Reduced from 20Gi for VPS
