@@ -1,0 +1,29 @@
+{
+  "model": {
+    "provider": "openai",
+    "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
+    "model": "Qwen3.6-35B-A3B",
+    "apiKey": "sk-GmZO20unlgM0ATKV59VBAQ",
+    "temperature": 0.7,
+    "maxTokens": 4096
+  },
+  "profiles": {
+    "litellm": {
+      "provider": "openai",
+      "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
+      "model": "Qwen3.6-35B-A3B",
+      "apiKey": "sk-GmZO20unlgM0ATKV59VBAQ",
+      "temperature": 0.7,
+      "maxTokens": 4096
+    },
+    "litellm-fast": {
+      "provider": "openai",
+      "baseUrl": "https://litemaas.rhoai.rh-aiservices-bu.com/v1",
+      "model": "Qwen3.6-35B-A3B",
+      "apiKey": "sk-GmZO20unlgM0ATKV59VBAQ",
+      "temperature": 0.3,
+      "maxTokens": 2048
+    }
+  },
+  "activeProfile": "litellm"
+}
