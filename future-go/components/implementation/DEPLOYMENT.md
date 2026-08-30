@@ -10,16 +10,16 @@ Deployment guide for Implementation Service following the actual Podman-based ar
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  Push to main → GitHub Actions                       │   │
 │  │  1. Build OCI images                                 │   │
-│  │  2. Push to ghcr.io                                  │   │
+│  │  2. Push to quay.io                                  │   │
 │  │  3. SSH deploy to VPS                                │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
-│           ghcr.io (GitHub Container Registry)               │
-│  - ghcr.io/os-santiago/homedir-ai-sdlc/worker:latest        │
-│  - ghcr.io/os-santiago/homedir-ai-sdlc/dashboard:latest     │
-│  - ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest│
+│           quay.io (GitHub Container Registry)               │
+│  - quay.io/os-santiago/homedir-ai-sdlc/worker:latest        │
+│  - quay.io/os-santiago/homedir-ai-sdlc/dashboard:latest     │
+│  - quay.io/os-santiago/homedir-ai-sdlc/implementation:latest│
 └─────────────────────────────────────────────────────────────┘
                          ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -55,7 +55,7 @@ git push origin main
 
 # 2. GitHub Actions automatically:
 #    - Builds worker, dashboard, implementation images
-#    - Pushes to ghcr.io
+#    - Pushes to quay.io
 #    - SSH to VPS
 #    - Stops existing pod
 #    - Creates new pod with all 3 containers
@@ -100,7 +100,7 @@ podman run -d \
   -e MAX_IMPLEMENTATION_ITERATIONS=3 \
   -e QUALITY_THRESHOLD=8.0 \
   -e NVIDIA_API_KEY="${NVIDIA_API_KEY}" \
-  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+  quay.io/os-santiago/homedir-ai-sdlc/implementation:latest
 ```
 
 ### sc-agent-cli Configuration
@@ -233,7 +233,7 @@ podman run --rm \
 ssh user@vps
 
 # Pull latest image
-podman pull ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+podman pull quay.io/os-santiago/homedir-ai-sdlc/implementation:latest
 
 # Stop existing container (if running)
 podman stop ai-sdlc-implementation
@@ -247,7 +247,7 @@ podman run -d \
   -e PORT=8082 \
   -e SC_PROFILE=nvidia \
   -e NVIDIA_API_KEY="your-key" \
-  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:latest
+  quay.io/os-santiago/homedir-ai-sdlc/implementation:latest
 
 # Verify
 podman logs --tail 20 ai-sdlc-implementation
@@ -296,10 +296,10 @@ create_pr "${issue_number}" "${code}"
 ssh user@vps
 
 # Check available tags
-podman search ghcr.io/os-santiago/homedir-ai-sdlc/implementation --list-tags
+podman search quay.io/os-santiago/homedir-ai-sdlc/implementation --list-tags
 
 # Pull specific version (by commit SHA)
-podman pull ghcr.io/os-santiago/homedir-ai-sdlc/implementation:main-abc1234
+podman pull quay.io/os-santiago/homedir-ai-sdlc/implementation:main-abc1234
 
 # Stop current
 podman stop ai-sdlc-implementation
@@ -313,7 +313,7 @@ podman run -d \
   -e PORT=8082 \
   -e SC_PROFILE=nvidia \
   -e NVIDIA_API_KEY="your-key" \
-  ghcr.io/os-santiago/homedir-ai-sdlc/implementation:main-abc1234
+  quay.io/os-santiago/homedir-ai-sdlc/implementation:main-abc1234
 ```
 
 ### Via Git Revert
@@ -375,7 +375,7 @@ Located in `.github/workflows/deploy-production.yml`:
 jobs:
   build-implementation:
     # Build container image
-    # Push to ghcr.io
+    # Push to quay.io
   
   deploy-vps:
     needs: [build-worker, build-dashboard, build-implementation]
@@ -402,5 +402,5 @@ jobs:
 
 **Last Updated:** 2026-08-29  
 **Deployment Model:** Podman Pods on VPS  
-**Registry:** ghcr.io  
+**Registry:** quay.io  
 **Status:** Production
