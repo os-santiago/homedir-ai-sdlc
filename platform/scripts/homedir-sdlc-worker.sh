@@ -499,8 +499,9 @@ run_scc_with_timeout_handling() {
   local scc_rc
   if run_scc_prompt "${prompt}" "${issue_body}"; then
     return 0
+  else
+    scc_rc=$?
   fi
-  scc_rc=$?
   run_scc_handle_exit_code "${scc_rc}" "remediation"
   return "${scc_rc}"
 }
@@ -2930,7 +2931,6 @@ EOF
   if [[ $scc_rc -eq 0 ]]; then
     :
   else
-    scc_rc=$?
     log "SCC failed for issue #${number}"
     if [[ "${scc_rc}" -eq 124 ]]; then
       local issue_complexity
