@@ -8,6 +8,8 @@ on:
       - 'events-service/**'
       - 'platform/scripts/homedir-sdlc-worker.sh'
       - 'tests/test_worker_exit_codes.py'
+      - 'tests/test_deployment_preparation.py'
+      - '.github/workflows/deploy-production.yml'
       - '.github/workflows/ci.yml'
 
 permissions:
@@ -26,6 +28,7 @@ jobs:
         run: |
           bash -n platform/scripts/homedir-sdlc-worker.sh
           python3 -m unittest discover -s tests -p 'test_worker_exit_codes.py' -v
+          python3 -m unittest discover -s tests -p 'test_deployment_preparation.py' -v
 
   events-service:
     runs-on: ubuntu-latest
