@@ -2,11 +2,13 @@ package scagent
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Client wraps sc-agent-cli execution for code generation and quality review
@@ -26,8 +28,10 @@ func NewClient() *Client {
 }
 
 // GenerateCode executes code generation via sc-agent-cli
-func (c *Client) GenerateCode(prompt string) (string, error) {
-	cmd := exec.Command(c.BinaryPath, "-yq", prompt)
+func (c *Client) GenerateCode(ctx context.Context, prompt string) (string, error) {
+	cmd := exec.CommandContext(ctx, c.BinaryPath, "-yq", prompt)
+	configureCancellation(cmd)
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Env = append(os.Environ(),
 		"NO_COLOR=1", // Disable ANSI escape codes for clean JSON parsing
 		fmt.Sprintf("SC_MAX_ITERATIONS=%d", c.MaxIter),
@@ -39,6 +43,9 @@ func (c *Client) GenerateCode(prompt string) (string, error) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	if err != nil {
 		return "", fmt.Errorf("sc-agent execution failed: %w\nStderr: %s", err, stderr.String())
 	}
@@ -55,9 +62,9 @@ func (c *Client) GenerateCode(prompt string) (string, error) {
 }
 
 // ReviewCode executes quality review via sc-agent-cli
-func (c *Client) ReviewCode(code string) (string, error) {
+func (c *Client) ReviewCode(ctx context.Context, code string) (string, error) {
 	prompt := buildReviewPrompt(code)
-	return c.GenerateCode(prompt)
+	return c.GenerateCode(ctx, prompt)
 }
 
 // buildReviewPrompt creates quality assessment prompt
