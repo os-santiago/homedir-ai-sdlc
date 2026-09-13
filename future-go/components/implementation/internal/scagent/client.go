@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -28,6 +29,7 @@ func NewClient() *Client {
 func (c *Client) GenerateCode(prompt string) (string, error) {
 	cmd := exec.Command(c.BinaryPath, "-yq", prompt)
 	cmd.Env = append(os.Environ(),
+		"NO_COLOR=1", // Disable ANSI escape codes for clean JSON parsing
 		fmt.Sprintf("SC_MAX_ITERATIONS=%d", c.MaxIter),
 		fmt.Sprintf("SC_PROFILE=%s", c.Profile),
 	)
@@ -45,6 +47,9 @@ func (c *Client) GenerateCode(prompt string) (string, error) {
 	if output == "" {
 		return "", fmt.Errorf("sc-agent returned empty output")
 	}
+
+	// Strip ANSI escape codes (sc-agent-cli forces colors even with NO_COLOR=1)
+	output = stripANSI(output)
 
 	return output, nil
 }
@@ -139,4 +144,13 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// stripANSI removes ANSI escape codes from string
+// sc-agent-cli forces colors (chalk.level = 2) even with NO_COLOR=1,
+// so we strip them post-processing to ensure clean JSON parsing
+func stripANSI(s string) string {
+	// Regex matches ANSI escape sequences: ESC[ ... m
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiRegex.ReplaceAllString(s, "")
 }
