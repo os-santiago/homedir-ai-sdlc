@@ -363,12 +363,11 @@ require_cmd() {
 }
 
 # ============================================================================
-# Implementation Service Integration
+# Repository Implementation
 # ============================================================================
-# Calls the Implementation HTTP service for multi-pass code generation
-# with quality feedback loops. Falls back to direct SCC if unavailable.
+# Execute against the worker-owned checkout with verifiable repository evidence.
 
-IMPLEMENTATION_SERVICE_URL="${IMPLEMENTATION_SERVICE_URL:-http://localhost:8082}"
+
 
 remaining_implementation_seconds() {
   local remaining=$((IMPLEMENTATION_DEADLINE - SECONDS))
@@ -380,103 +379,59 @@ remaining_implementation_seconds() {
 
 run_initial_implementation() {
   local number="$1" body="$2" prompt="$3"
-  local budget code_output service_rc
+  local budget base_sha expected_branch changed_files validation_cmd rc
+  base_sha=$(git -C "${WORKDIR}" rev-parse HEAD) || return 1
+  expected_branch=$(git -C "${WORKDIR}" branch --show-current) || return 1
+  if [[ -z "${expected_branch}" || "${expected_branch}" == main ]]; then
+    log "Refusing implementation outside a prepared PR branch"
+    return 1
+  fi
+  if [[ -n "$(git -C "${WORKDIR}" status --porcelain)" ]]; then
+    log "Refusing implementation with an unclean baseline"
+    return 1
+  fi
   budget=$(get_timeout_for_complexity "$(classify_issue_complexity "${body}")")
   local IMPLEMENTATION_DEADLINE=$((SECONDS + budget))
-  if code_output=$(call_implementation_service "${number}" "${body}" "${prompt}" 2>&1); then
-    echo "${code_output}"
-    return 0
-  else
-    service_rc=$?
-  fi
-  # Only an unavailable health endpoint permits fallback. Once submitted,
-  # a failed request has an ambiguous remote outcome and must not be duplicated.
-  if [[ "${service_rc}" -ne 69 ]]; then
-    log "Implementation request failed for issue #${number}; no overlapping fallback (exit=${service_rc})"
-    return "${service_rc}"
-  fi
-  remaining_implementation_seconds >/dev/null || return 124
-  log "Implementation service unavailable; using remaining budget for issue #${number}"
-  run_scc_checked "${prompt}" "${body}"
-}
+  prompt="${prompt}
 
-call_implementation_service() {
-  local issue_number="$1"
-  local issue_body="$2"
-  local prompt="$3"
-  local remaining probe_timeout
-  remaining=$(remaining_implementation_seconds) || return 124
-  probe_timeout=2
-  if (( remaining < probe_timeout )); then probe_timeout=${remaining}; fi
-
-  # Check if implementation service is available
-  if ! curl -sf --max-time "${probe_timeout}" "${IMPLEMENTATION_SERVICE_URL}/health" >/dev/null 2>&1; then
-    log "Implementation service not available at ${IMPLEMENTATION_SERVICE_URL}"
-    return 69
-  fi
-
-  log "Calling implementation service for issue #${issue_number}"
-
-  # Extract acceptance criteria from issue body (lines starting with "- [ ]")
-  local acceptance_criteria
-  acceptance_criteria=$(echo "$issue_body" | grep -E '^\s*-\s*\[[ x]\]' | sed 's/^[[:space:]]*-[[:space:]]*\[[[:space:]x]*\][[:space:]]*//' | jq -R . | jq -s .)
-
-  # Build JSON request
-  local request_json
-  request_json=$(jq -n \
-    --arg num "$issue_number" \
-    --arg body "$issue_body" \
-    --argjson criteria "$acceptance_criteria" \
-    '{
-      issue_number: ($num | tonumber),
-      issue_body: $body,
-      acceptance_criteria: $criteria,
-      max_iterations: 3,
-      quality_threshold: 8.0
-    }')
-
-  # Call implementation service
-  local response
-  local http_code
-  remaining=$(remaining_implementation_seconds) || return 124
-  if http_code=$(curl -sf -X POST "${IMPLEMENTATION_SERVICE_URL}/api/implementation/generate" \
-    -H "Content-Type: application/json" \
-    -d "$request_json" \
-    -w "%{http_code}" \
-    -o /tmp/impl-response-${issue_number}.json \
-    --max-time "${remaining}"); then
+Repository execution contract:
+- Work in the current checkout and read its AGENTS.md and applicable instructions.
+- Base SHA: ${base_sha}; required branch: ${expected_branch}.
+- Inspect relevant files and implement actual repository changes; prose is not a result.
+- Do not switch branches, rewrite the base history, push, merge, or deploy.
+- Run relevant tests and report changed files and validation evidence."
+  # The worker owns the checkout. The HTTP generator has no repository mutation
+  # contract and must not be used as an implementation route.
+  if run_scc_checked "${prompt}" "${body}"; then
     :
   else
-    local curl_rc=$?
-    rm -f "/tmp/impl-response-${issue_number}.json"
-    if [[ "${curl_rc}" -eq 28 ]]; then return 124; fi
+    rc=$?
+    return "${rc}"
+  fi
+  if [[ "$(git -C "${WORKDIR}" branch --show-current)" != "${expected_branch}" ]] \
+    || ! git -C "${WORKDIR}" merge-base --is-ancestor "${base_sha}" HEAD; then
+    log "Implementation changed its branch or base history; refusing the result"
     return 1
   fi
-
-  if [[ "$http_code" != "200" ]]; then
-    log "Implementation service returned HTTP ${http_code}"
-    rm -f "/tmp/impl-response-${issue_number}.json"
+  changed_files=$(git -C "${WORKDIR}" diff --name-only "${base_sha}" && git -C "${WORKDIR}" ls-files --others --exclude-standard) || return 1
+  if [[ -z "${changed_files}" ]]; then
+    log "Implementation produced no repository diff; refusing textual/no-op result"
     return 1
   fi
-
-  # Parse response
-  local code quality_score iterations_used
-  code=$(jq -r '.code' "/tmp/impl-response-${issue_number}.json")
-  quality_score=$(jq -r '.quality_score' "/tmp/impl-response-${issue_number}.json")
-  iterations_used=$(jq -r '.iterations_used' "/tmp/impl-response-${issue_number}.json")
-
-  rm -f "/tmp/impl-response-${issue_number}.json"
-
-  if [[ -z "$code" || "$code" == "null" ]]; then
-    log "Implementation service returned empty code"
-    return 1
+  git -C "${WORKDIR}" diff --check "${base_sha}" || return 1
+  log "Implementation evidence: issue=${number} base=${base_sha} branch=${expected_branch} changed_files=${changed_files}"
+  validation_cmd=$(get_validation_command_for_changes "${changed_files}")
+  if [[ -n "${validation_cmd}" ]]; then
+    log "Running scoped validation: ${validation_cmd}"
+    if (cd "${WORKDIR}" && bash -c "${validation_cmd}"); then
+      log "Scoped validation passed for base ${base_sha}"
+    else
+      log "Scoped validation failed for base ${base_sha}"
+      return 1
+    fi
+  else
+    log "No scoped validation configured; CI remains required for base ${base_sha}"
   fi
-
-  log "Implementation service completed: score=${quality_score}/10, iterations=${iterations_used}"
-
-  # Output code to stdout (same as SCC would)
-  echo "$code"
-  return 0
 }
 
 run_scc_prompt() {
@@ -2984,24 +2939,6 @@ EOF
   fi
 
   if [[ -n "$(git -C "${WORKDIR}" status --porcelain)" ]]; then
-    # ADEV Rule #11: Run narrowest validation before commit
-    local changed_files
-    changed_files=$( (git -C "${WORKDIR}" diff --name-only HEAD && git -C "${WORKDIR}" ls-files --others --exclude-standard) 2>/dev/null || echo "")
-    local scoped_validation_cmd
-    scoped_validation_cmd=$(get_validation_command_for_changes "$changed_files")
-
-    if [[ -n "${scoped_validation_cmd}" ]]; then
-      log "Running scoped validation: ${scoped_validation_cmd}"
-      if (cd "${WORKDIR}" && bash -c "${scoped_validation_cmd}"); then
-        log "Scoped validation passed"
-      else
-        mark_failed "${number}" "Scoped validation failed: ${scoped_validation_cmd}"
-        return 0
-      fi
-    else
-      log "No scoped validation defined for changed files; relying on CI"
-    fi
-
     log "committing SCC changes for issue #${number}"
     git -C "${WORKDIR}" add -A
     git -C "${WORKDIR}" commit -m "chore(sdlc): implement issue #${number}" -m "Refs #${number}"

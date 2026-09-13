@@ -1,18 +1,22 @@
 # Initial implementation budget
 
-Initial implementation uses one wall-clock budget selected by the existing issue
-complexity policy (15, 20 or 25 minutes). The health probe, HTTP generation and
-any direct CLI fallback consume that same budget. Remediation retains its own
-existing limit; this change does not establish a lifetime budget across retries.
+Initial implementation runs the CLI directly in the worker-owned checkout, using
+the existing complexity budget (15, 20 or 25 minutes). There is no HTTP generation
+or fallback route. Remediation retains its existing limit; this does not establish
+a lifetime budget across retries. Scoped validation runs after agent execution.
 
-Direct CLI fallback is permitted only when the implementation service health
-endpoint is unavailable before submission. A failed submitted request, including
-an HTTP timeout, stops the attempt rather than potentially duplicating remote
-work. HTTP client timeout is classified as exit 124. Operators should investigate
-the existing attempt before retrying an ambiguous result.
+The worker requires a clean PR branch and records its starting SHA. The agent
+receives that SHA, the required branch and instructions to read applicable
+repository guidance. It must leave real changes in this checkout. Branch switches,
+rewritten base history and prose-only/no-diff results are rejected. Committed and
+uncommitted changes both undergo scoped validation before the existing PR flow.
+Logs record the base SHA, branch, changed paths and validation outcome. Absence of
+a scoped validator is explicitly recorded; CI and required reviews remain gates.
 
-PR #60 adds server-side cancellation. Until that change is deployed, client
-timeout limits the worker's wait but cannot guarantee remote process cleanup.
-Neither change provides resumable checkpoints or exactly-once execution.
+The HTTP implementation service remains independently available with its existing
+cancellation support, but the worker does not call it until a repository mutation
+contract exists. No container mounts or production services are changed by this
+routing change. CLI timeout is preserved as exit 124. This does not provide
+resumable checkpoints or exactly-once execution.
 
 Validation: `python3 -m unittest discover -s tests -p 'test_worker*.py' -v`.
