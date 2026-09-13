@@ -370,15 +370,49 @@ require_cmd() {
 
 IMPLEMENTATION_SERVICE_URL="${IMPLEMENTATION_SERVICE_URL:-http://localhost:8082}"
 
+remaining_implementation_seconds() {
+  local remaining=$((IMPLEMENTATION_DEADLINE - SECONDS))
+  if (( remaining <= 0 )); then
+    return 124
+  fi
+  printf '%s\n' "${remaining}"
+}
+
+run_initial_implementation() {
+  local number="$1" body="$2" prompt="$3"
+  local budget code_output service_rc
+  budget=$(get_timeout_for_complexity "$(classify_issue_complexity "${body}")")
+  local IMPLEMENTATION_DEADLINE=$((SECONDS + budget))
+  if code_output=$(call_implementation_service "${number}" "${body}" "${prompt}" 2>&1); then
+    echo "${code_output}"
+    return 0
+  else
+    service_rc=$?
+  fi
+  # Only an unavailable health endpoint permits fallback. Once submitted,
+  # a failed request has an ambiguous remote outcome and must not be duplicated.
+  if [[ "${service_rc}" -ne 69 ]]; then
+    log "Implementation request failed for issue #${number}; no overlapping fallback (exit=${service_rc})"
+    return "${service_rc}"
+  fi
+  remaining_implementation_seconds >/dev/null || return 124
+  log "Implementation service unavailable; using remaining budget for issue #${number}"
+  run_scc_checked "${prompt}" "${body}"
+}
+
 call_implementation_service() {
   local issue_number="$1"
   local issue_body="$2"
   local prompt="$3"
+  local remaining probe_timeout
+  remaining=$(remaining_implementation_seconds) || return 124
+  probe_timeout=2
+  if (( remaining < probe_timeout )); then probe_timeout=${remaining}; fi
 
   # Check if implementation service is available
-  if ! curl -sf --max-time 2 "${IMPLEMENTATION_SERVICE_URL}/health" >/dev/null 2>&1; then
+  if ! curl -sf --max-time "${probe_timeout}" "${IMPLEMENTATION_SERVICE_URL}/health" >/dev/null 2>&1; then
     log "Implementation service not available at ${IMPLEMENTATION_SERVICE_URL}"
-    return 1
+    return 69
   fi
 
   log "Calling implementation service for issue #${issue_number}"
@@ -404,12 +438,20 @@ call_implementation_service() {
   # Call implementation service
   local response
   local http_code
-  http_code=$(curl -sf -X POST "${IMPLEMENTATION_SERVICE_URL}/api/implementation/generate" \
+  remaining=$(remaining_implementation_seconds) || return 124
+  if http_code=$(curl -sf -X POST "${IMPLEMENTATION_SERVICE_URL}/api/implementation/generate" \
     -H "Content-Type: application/json" \
     -d "$request_json" \
     -w "%{http_code}" \
     -o /tmp/impl-response-${issue_number}.json \
-    --max-time 1800)  # 30 min timeout for iterative generation
+    --max-time "${remaining}"); then
+    :
+  else
+    local curl_rc=$?
+    rm -f "/tmp/impl-response-${issue_number}.json"
+    if [[ "${curl_rc}" -eq 28 ]]; then return 124; fi
+    return 1
+  fi
 
   if [[ "$http_code" != "200" ]]; then
     log "Implementation service returned HTTP ${http_code}"
@@ -452,6 +494,9 @@ run_scc_prompt() {
   fi
 
   # Export timeout for error reporting (used by run_scc_handle_exit_code)
+  if [[ -n "${IMPLEMENTATION_DEADLINE:-}" ]]; then
+    dynamic_timeout=$(remaining_implementation_seconds) || return 124
+  fi
   export SCC_ACTUAL_TIMEOUT="${dynamic_timeout}"
 
   (
@@ -2911,21 +2956,10 @@ EOF
   log "generating code for issue #${number}"
   write_heartbeat "running" "Code generation for issue #${number}"
   local scc_rc
-  local code_output
-
-  # Try implementation service first (with quality iterations)
-  if code_output=$(call_implementation_service "${number}" "${body}" "${prompt}" 2>&1); then
-    log "Implementation service succeeded for issue #${number}"
-    echo "$code_output"  # Output code to be captured by caller
+  if run_initial_implementation "${number}" "${body}" "${prompt}"; then
     scc_rc=0
   else
-    # Fallback to direct SCC execution
-    log "Falling back to direct SCC execution for issue #${number}"
-    if run_scc_checked "${prompt}" "${body}"; then
-      scc_rc=0
-    else
-      scc_rc=$?
-    fi
+    scc_rc=$?
   fi
 
   if [[ $scc_rc -eq 0 ]]; then
