@@ -52,6 +52,24 @@ class WorkerBudgetTest(unittest.TestCase):
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertNotIn("fallback", result.stdout)
 
+    def test_http_submission_errors_are_not_unavailability(self):
+        for curl_code, expected in ((28, 124), (22, 1), (7, 1), (69, 1)):
+            with self.subTest(curl_code=curl_code):
+                script = "\n".join([
+                    "set -euo pipefail",
+                    "IMPLEMENTATION_SERVICE_URL=http://offline",
+                    "IMPLEMENTATION_DEADLINE=$((SECONDS + 10))",
+                    "log() { :; }",
+                    "jq() { echo '{}'; }",
+                    'curl() { if [[ "${*: -1}" == */health ]]; then return 0; fi; '
+                    f'echo 000; return {curl_code}; }}',
+                    function("remaining_implementation_seconds"),
+                    function("call_implementation_service"),
+                    "if call_implementation_service 61 '- [ ] test' prompt; then exit 0; else exit $?; fi",
+                ])
+                result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, expected, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
