@@ -1,20 +1,29 @@
 package implementation
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"time"
 )
 
 // Handler provides HTTP API for implementation service
 type Handler struct {
 	iterator *Iterator
+	timeout  time.Duration
 }
 
 // NewHandler creates HTTP handler
 func NewHandler() *Handler {
+	seconds := getEnvInt("IMPLEMENTATION_TIMEOUT_SECONDS", 1800)
+	if seconds <= 0 || seconds > 86400 {
+		seconds = 1800
+	}
 	return &Handler{
 		iterator: NewIterator(),
+		timeout:  time.Duration(seconds) * time.Second,
 	}
 }
 
@@ -60,8 +69,17 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[http] Received generation request for issue #%d", req.IssueNumber)
 
 	// Execute generation
-	resp, err := h.iterator.Generate(req)
+	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
+	defer cancel()
+	resp, err := h.iterator.Generate(ctx, req)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			writeError(w, http.StatusGatewayTimeout, "Implementation deadline exceeded")
+			return
+		}
 		log.Printf("[http] Generation failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "Generation failed: "+err.Error())
 		return
@@ -76,7 +94,7 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 // handleHealth returns service health status
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "ok",
+		"status":  "ok",
 		"service": "implementation",
 	})
 }

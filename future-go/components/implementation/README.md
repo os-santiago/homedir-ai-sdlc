@@ -2,6 +2,23 @@
 
 Multi-pass code generation with quality-driven re-prompting for AI-SDLC.
 
+## Request cancellation and execution budget
+
+`IMPLEMENTATION_TIMEOUT_SECONDS` limits the entire generation/review request,
+including all iterations (default 1800 seconds; accepted range 1–86400).
+Invalid values fall back to 1800. Client disconnection or an earlier parent
+deadline also cancels work. A server deadline returns HTTP 504.
+
+On Linux, cancellation kills the CLI process group, including ordinary shell
+children. Explicitly detached processes still require runtime sandbox limits.
+On other platforms, cancellation terminates the direct CLI process only.
+Canceled reviews do not trigger another generation attempt or return partial
+code as a successful result. No checkpoint/resume behavior is introduced here.
+
+This is a server-side bound, not yet a shared worker/fallback budget. The worker
+still needs a separate admission/idempotency protocol before overlapping retries
+can be ruled out across network failures.
+
 ## Overview
 
 Implements **Implementation Iterations** (critical gap from [AI-SDLC-COMPONENTS-STATUS.md](../../homedir-infra/AI-SDLC-COMPONENTS-STATUS.md)) by adding quality validation and feedback loops before PR creation.
