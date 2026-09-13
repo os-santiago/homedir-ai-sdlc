@@ -196,7 +196,9 @@ jobs:
     name: Trigger Deployment
     runs-on: ubuntu-latest
     needs: [build-worker, build-dashboard, build-implementation]
-    if: always()
+    if: >-
+      ${{ !cancelled() && needs.build-worker.result == 'success' &&
+          needs.build-dashboard.result == 'success' && needs.build-implementation.result == 'success' }}
 
     steps:
       - name: Report build status
@@ -224,6 +226,12 @@ jobs:
             echo "Dashboard build: $DASHBOARD_BUILD_SUCCESS"
             echo "Implementation build: $IMPLEMENTATION_BUILD_SUCCESS"
             echo ""
+
+            # Prepare every replacement before modifying the running deployment.
+            # A failed pull exits under set -e and leaves the existing pod intact.
+            for component in worker dashboard implementation; do
+              podman pull "${{ env.REPOSITORY }}:${component}-${GITHUB_SHA}"
+            done
 
             # Create worker environment file from secrets
             # Using printf to avoid YAML heredoc syntax issues
@@ -265,8 +273,8 @@ jobs:
 
             # Deploy worker (always - this job only runs if worker build succeeded)
             if [ "$WORKER_BUILD_SUCCESS" = "true" ]; then
-              echo "Pulling worker image..."
-              podman pull ${{ env.REPOSITORY }}:worker-latest
+              echo "Using prepared worker image..."
+              # Image already fetched before stopping the previous pod.
 
               echo "Starting worker container..."
               WORKER_CONTAINER_ID=$(podman run -d \
@@ -276,7 +284,7 @@ jobs:
                 --env-file /etc/homedir-sdlc/worker.env \
                 -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc \
                 -v /srv/homedir-sdlc/worktrees:/srv/homedir-sdlc/worktrees \
-                ${{ env.REPOSITORY }}:worker-latest)
+                ${{ env.REPOSITORY }}:worker-${GITHUB_SHA})
 
               echo "Worker container ID: $WORKER_CONTAINER_ID"
 
@@ -304,8 +312,8 @@ jobs:
 
             # Deploy dashboard (conditional - only if build succeeded)
             if [ "$DASHBOARD_BUILD_SUCCESS" = "true" ]; then
-              echo "Pulling dashboard image..."
-              podman pull ${{ env.REPOSITORY }}:dashboard-latest
+              echo "Using prepared dashboard image..."
+              # Image already fetched before stopping the previous pod.
 
               echo "Starting dashboard container..."
               podman run -d \
@@ -314,7 +322,7 @@ jobs:
                 --restart unless-stopped \
                 -e HOMEDIR_SDLC_STATE_DIR=/var/lib/homedir-sdlc \
                 -v /var/lib/homedir-sdlc:/var/lib/homedir-sdlc:ro \
-                ${{ env.REPOSITORY }}:dashboard-latest
+                ${{ env.REPOSITORY }}:dashboard-${GITHUB_SHA}
             else
               echo "⚠️  Dashboard build failed - skipping dashboard deployment"
               echo "Worker can operate independently without dashboard"
@@ -322,8 +330,8 @@ jobs:
 
             # Deploy implementation service (conditional - only if build succeeded)
             if [ "$IMPLEMENTATION_BUILD_SUCCESS" = "true" ]; then
-              echo "Pulling implementation image..."
-              podman pull ${{ env.REPOSITORY }}:implementation-latest
+              echo "Using prepared implementation image..."
+              # Image already fetched before stopping the previous pod.
 
               echo "Starting implementation container..."
               podman run -d \
@@ -335,7 +343,7 @@ jobs:
                 -e SC_AGENT_PATH=/usr/local/bin/scc \
                 -e MAX_IMPLEMENTATION_ITERATIONS=3 \
                 -e QUALITY_THRESHOLD=8.0 \
-                ${{ env.REPOSITORY }}:implementation-latest
+                ${{ env.REPOSITORY }}:implementation-${GITHUB_SHA}
 
               # Verify implementation is running
               sleep 5
