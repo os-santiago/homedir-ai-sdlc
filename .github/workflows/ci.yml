@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'events-service/**'
+      - 'future-go/components/implementation/**'
       - 'platform/scripts/homedir-sdlc-worker.sh'
       - 'tests/test_worker_exit_codes.py'
       - 'tests/test_worker_budget.py'
@@ -21,6 +22,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  implementation-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: future-go/components/implementation/go.mod
+          cache: false
+      - name: Test implementation cancellation and quality
+        working-directory: future-go/components/implementation
+        run: go test -race ./...
+
   worker-regression:
     runs-on: ubuntu-latest
     steps:

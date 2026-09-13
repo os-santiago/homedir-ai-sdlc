@@ -1,6 +1,7 @@
 package implementation
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -13,10 +14,15 @@ import (
 
 // Iterator orchestrates multi-pass code generation with quality feedback
 type Iterator struct {
-	scAgent  *scagent.Client
-	scorer   *quality.Scorer
-	maxIter  int
+	scAgent   agentClient
+	scorer    *quality.Scorer
+	maxIter   int
 	threshold float64
+}
+
+type agentClient interface {
+	GenerateCode(context.Context, string) (string, error)
+	ReviewCode(context.Context, string) (string, error)
 }
 
 // NewIterator creates implementation iterator with configuration
@@ -30,7 +36,7 @@ func NewIterator() *Iterator {
 }
 
 // Generate executes multi-pass code generation with quality gates
-func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
+func (it *Iterator) Generate(ctx context.Context, req GenerateRequest) (GenerateResponse, error) {
 	log.Printf("[iterator] Starting generation for issue #%d (max_iter=%d, threshold=%.1f)",
 		req.IssueNumber, it.getMaxIter(req), it.getThreshold(req))
 
@@ -42,6 +48,9 @@ func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
 	threshold := it.getThreshold(req)
 
 	for attemptNum := 1; attemptNum <= maxIter; attemptNum++ {
+		if err := ctx.Err(); err != nil {
+			return GenerateResponse{}, err
+		}
 		log.Printf("[iterator] Attempt %d/%d", attemptNum, maxIter)
 
 		// Generate code
@@ -55,7 +64,7 @@ func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
 				req.IssueBody,
 				req.AcceptanceCriteria,
 			)
-			code, err = it.scAgent.GenerateCode(prompt)
+			code, err = it.scAgent.GenerateCode(ctx, prompt)
 		} else {
 			// Subsequent attempts: use feedback from previous attempt
 			prevAttempt := attempts[len(attempts)-1]
@@ -67,7 +76,7 @@ func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
 				prevAttempt.Score.Overall,
 				prevAttempt.Score.Issues,
 			)
-			code, err = it.scAgent.GenerateCode(prompt)
+			code, err = it.scAgent.GenerateCode(ctx, prompt)
 		}
 
 		if err != nil {
@@ -78,7 +87,13 @@ func (it *Iterator) Generate(req GenerateRequest) (GenerateResponse, error) {
 		log.Printf("[iterator] Generated %d chars of code", len(code))
 
 		// Quality check
-		reviewText, err := it.scAgent.ReviewCode(code)
+		if err := ctx.Err(); err != nil {
+			return GenerateResponse{}, err
+		}
+		reviewText, err := it.scAgent.ReviewCode(ctx, code)
+		if ctx.Err() != nil {
+			return GenerateResponse{}, ctx.Err()
+		}
 		if err != nil {
 			log.Printf("[iterator] Review failed at attempt %d: %v", attemptNum, err)
 			// Continue without score if review fails
