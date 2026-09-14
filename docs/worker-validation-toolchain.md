@@ -11,3 +11,9 @@ A recovery image can add the same Java 21/Maven packages to that approved worker
 Only replace the worker while no implementation is active. Preserve the stopped previous container for rollback, reuse its state/worktree/log mounts and the existing protected environment file, and verify startup before requeueing an issue. If startup validation fails, stop the candidate and restart the preserved container. Keep Homedir and other services running.
 
 This manual recovery does not repair registry availability. Once normal publishing works again, deploy the reviewed source through the SHA-tagged image workflow and verify the worker revision before removing retained recovery resources.
+
+## Recorded activation
+
+The recovery image `localhost/homedir-ai:worker-02487c38-validation` was activated on 2026-09-14 at approximately 23:35 UTC. Its image ID is `ad1d94eba150137a56a08db1b6fa389ef39c8e14621c434c8e848ca70102ed29`. Java reported 21.0.12, Maven reported 3.8.7, and the CLI reported the pinned revision. The previous worker is retained as `ai-sdlc-worker-before-02487c38`. Homedir returned HTTP 200 after activation.
+
+The first recovered #1564 attempt reached generation at 23:37:38 UTC and failed at 23:37:48 UTC when the provider returned HTTP 503: `ResourceExhausted: Worker local total request limit reached (150/32)`. No patch was generated. The worker exited the attempt normally and returned to its polling loop. A subsequent attempt was queued for the next normal cycle, allowing a cooldown rather than starting a concurrent implementation. Provider capacity remains separate from the successful image/toolchain checks.
