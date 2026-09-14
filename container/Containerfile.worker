@@ -63,11 +63,15 @@ RUN mkdir -p /etc/skel/.config/gh && \
 # ============================================================================
 # Install sc-agent-cli from GitHub (connects to free models like Nemotron)
 ARG SC_AGENT_REPO=https://github.com/os-santiago/sc-agent-cli.git
-ARG SC_AGENT_REF=main
+ARG SC_AGENT_REF=d78def29e8f84502f63218ac8ce078c8a4a3f965
 
 RUN echo "Installing sc-agent-cli..." && \
-    git clone --depth 1 --branch ${SC_AGENT_REF} ${SC_AGENT_REPO} /opt/sc-agent-cli && \
+    git init /opt/sc-agent-cli && \
     cd /opt/sc-agent-cli && \
+    git remote add origin "${SC_AGENT_REPO}" && \
+    git fetch --depth 1 origin "${SC_AGENT_REF}" && \
+    git checkout --detach FETCH_HEAD && \
+    test "$(git rev-parse HEAD)" = "${SC_AGENT_REF}" && \
     npm ci && \
     npm run build && \
     # Create scc wrapper script
@@ -79,7 +83,7 @@ RUN echo "Installing sc-agent-cli..." && \
     (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
 # Configure sc-agent-cli with unlimited permissions for autonomous operation
-# Using LiteLLM (Qwen3.6-35B-A3B via OpenAI-compatible API)
+# Provider credentials are supplied at runtime, never embedded in the image.
 RUN mkdir -p /etc/skel/.sc-agent
 COPY container/sc-agent-config.json /etc/skel/.sc-agent/config.json
 RUN chmod 644 /etc/skel/.sc-agent/config.json

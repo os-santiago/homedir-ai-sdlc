@@ -623,7 +623,22 @@ remove_terminal_labels() {
 comment_issue() {
   local issue="$1"
   local body="$2"
-  gh issue comment "${issue}" --repo "${REPO}" --body "${body}" >/dev/null
+  local cache_dir="${STATE_DIR}/comment-notifications" digest previous=""
+  digest=$(printf '%s' "${body}" | sha256sum | cut -d ' ' -f 1) || return 0
+  if [[ -f "${cache_dir}/${issue}" ]]; then
+    previous=$(<"${cache_dir}/${issue}")
+  fi
+  if [[ "${previous}" == "${digest}" ]]; then
+    return 0
+  fi
+  if gh issue comment "${issue}" --repo "${REPO}" --body "${body}" >/dev/null; then
+    if ! (mkdir -p "${cache_dir}" && printf '%s\n' "${digest}" > "${cache_dir}/${issue}"); then
+      log "WARN: could not cache successful notification for issue #${issue}"
+    fi
+  else
+    log "WARN: notification failed for issue #${issue}; continuing worker cycle"
+  fi
+  return 0
 }
 
 log_autonomous_decision() {
