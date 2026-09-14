@@ -9,3 +9,5 @@ The worker does not assert acceptance, tests or translation completeness from th
 Policy lookup output must contain one JSON object with a nonempty policy identifier and decision. Null, malformed or multiple results are ignored rather than inserted into model context as an authoritative decision.
 
 Validation: python3 -m unittest discover -s tests -p 'test_worker*.py' -v
+
+Initial scoped validation shares the model execution deadline. The configured worker timeout caps the complexity-derived budget; timed-out validation reports exit 124. Processes receive TERM followed by KILL after a ten-second grace. This bounds the initial stage; later review/remediation cycles have their own lifecycle.
