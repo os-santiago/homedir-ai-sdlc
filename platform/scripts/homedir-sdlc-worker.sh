@@ -398,7 +398,7 @@ Repository execution contract:
 - Work in the current checkout and read its AGENTS.md and applicable instructions.
 - Base SHA: ${base_sha}; required branch: ${expected_branch}.
 - Inspect relevant files and implement actual repository changes; prose is not a result.
-- Do not switch branches, rewrite the base history, push, merge, or deploy.
+- Do not commit, switch branches, rewrite the base history, push, merge, or deploy.
 - Run relevant tests and report changed files and validation evidence."
   # The worker owns the checkout. The HTTP generator has no repository mutation
   # contract and must not be used as an implementation route.
@@ -2125,7 +2125,7 @@ run_scc_on_existing_pr() {
   fi
 
   git -C "${WORKDIR}" add -A
-  git -C "${WORKDIR}" commit -m "fix(sdlc): remediate issue #${issue} PR checks" -m "PR #${pr_number}"
+  git -C "${WORKDIR}" commit -s -m "fix(sdlc): remediate issue #${issue} PR checks" -m "PR #${pr_number}"
 
   validation_summary="Worker validation command not configured; GitHub checks are required before approval."
   if [[ -n "${VALIDATION_COMMAND}" ]]; then
@@ -2675,6 +2675,65 @@ run_event_command() {
   esac
 }
 
+create_implementation_pr() {
+  local number="$1" title="$2" branch="$3" validation_summary="$4"
+  local risk_label
+  risk_label=$(publication_risk_label) || return 1
+  gh pr create \
+      --repo "${REPO}" \
+      --base main \
+      --head "${branch}" \
+      --label "${risk_label}" \
+      --title "chore(sdlc): implement issue #${number}" \
+      --body "$(cat <<PRBODY
+## Summary
+
+Autonomous SCC implementation for issue #${number}: ${title}
+
+## Validation
+
+${validation_summary}
+
+## Issue Coverage
+
+- [ ] Map concrete code changes to issue #${number}: ${title}
+- [ ] Map each acceptance criterion, or explain why none applies.
+- [ ] List any known uncovered requirement, or state that none is known with evidence.
+
+## Governance
+
+- Branch protection, required checks, required reviews, and repository rules still apply.
+- No admin bypass was used.
+
+Closes #${number}
+PRBODY
+)"
+}
+
+publication_risk_label() {
+  local files
+  files=$(git -C "${WORKDIR}" diff --name-only origin/main...HEAD) || return 1
+  if [[ -z "${files}" ]]; then
+    return 1
+  fi
+  # Escalate sensitive paths; reviewers must confirm or raise the risk level.
+  if grep -Eiq '(auth|crypt|password|secret|token|payment|billing)' <<<"${files}"; then
+    echo 'pr:risk-critical'
+  elif grep -Eq '(^\.github/|^platform/|^container/|^infra/|application\.properties$)' <<<"${files}"; then
+    echo 'pr:risk-high'
+  elif ! grep -Evq '\.(md|txt)$' <<<"${files}"; then
+    echo 'pr:risk-low'
+  else
+    echo 'pr:risk-medium'
+  fi
+}
+
+valid_policy_decision() {
+  jq -e -s 'length == 1 and (.[0] | type == "object" and
+    (.policy | type == "string" and length > 0) and
+    (.decision | type == "string" and length > 0))' >/dev/null 2>&1
+}
+
 run_issue() {
   local issue_json="$1"
   local number title labels body url branch slug prompt pr_url pr_number validation_summary existing_pr_json existing_pr_number existing_pr_url
@@ -2738,7 +2797,7 @@ CRITICAL INSTRUCTIONS FOR BATCH MODE:
 - DO NOT just describe what to do - EXECUTE the changes immediately
 - Read relevant files first with Read tool, then modify them with Edit/Write
 - Ensure all acceptance criteria are met with real code changes
-- Work is complete only when files are modified and changes are committed
+- Work is complete only when files are modified and validated; the worker owns commits.
 
 Issue title:
 ${title}
@@ -2773,7 +2832,7 @@ EOF
   if declare -f get_policy_decision >/dev/null 2>&1; then
     policy_decision=$(get_policy_decision "${number}" "${title}" "${body}" 2>/dev/null || echo "null")
 
-    if [[ "$policy_decision" != "null" ]] && [[ -n "$policy_decision" ]]; then
+    if valid_policy_decision <<<"${policy_decision}"; then
       local policy_category
       policy_category=$(echo "$policy_decision" | jq -r '.category' 2>/dev/null || echo "")
 
@@ -2941,7 +3000,7 @@ EOF
   if [[ -n "$(git -C "${WORKDIR}" status --porcelain)" ]]; then
     log "committing SCC changes for issue #${number}"
     git -C "${WORKDIR}" add -A
-    git -C "${WORKDIR}" commit -m "chore(sdlc): implement issue #${number}" -m "Refs #${number}"
+    git -C "${WORKDIR}" commit -s -m "chore(sdlc): implement issue #${number}" -m "Refs #${number}"
   fi
 
   if [[ -z "$(git -C "${WORKDIR}" log --oneline "origin/main..HEAD")" ]]; then
@@ -2973,34 +3032,7 @@ Recommendation: Review the issue description for clarity, check SCC logs, or ver
 
   pr_url="$(gh pr view "${branch}" --repo "${REPO}" --template '{{.url}}' 2>/dev/null || true)"
   if [[ -z "${pr_url}" ]]; then
-    if ! pr_url="$(gh pr create \
-      --repo "${REPO}" \
-      --base main \
-      --head "${branch}" \
-      --title "chore(sdlc): implement issue #${number}" \
-      --body "$(cat <<PRBODY
-## Summary
-
-Autonomous SCC implementation for issue #${number}: ${title}
-
-## Validation
-
-${validation_summary}
-
-## Issue Coverage
-
-- [ ] Map concrete code changes to issue #${number}: ${title}
-- [ ] Map each acceptance criterion, or explain why none applies.
-- [ ] List any known uncovered requirement, or state that none is known with evidence.
-
-## Governance
-
-- Branch protection, required checks, required reviews, and repository rules still apply.
-- No admin bypass was used.
-
-Refs #${number}
-PRBODY
-)" 2>/dev/null)"; then
+    if ! pr_url="$(create_implementation_pr "${number}" "${title}" "${branch}" "${validation_summary}" 2>/dev/null)"; then
       mark_failed "${number}" "GitHub PR creation failed for branch ${branch}."
       return 0
     fi
