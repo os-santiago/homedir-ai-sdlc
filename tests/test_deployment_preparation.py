@@ -1,6 +1,7 @@
 """Run the workflow preparation section with a fake container runtime."""
 
 from pathlib import Path
+import json
 import subprocess
 import unittest
 
@@ -10,6 +11,33 @@ WORKFLOW = (ROOT / ".github/workflows/deploy-production.yml").read_text()
 
 
 class DeploymentPreparationTest(unittest.TestCase):
+    def test_runtime_credentials_fail_before_mutation(self):
+        start = WORKFLOW.index('            # Validate runtime secrets')
+        end = WORKFLOW.index('            # Prepare every replacement', start)
+        guard = WORKFLOW[start:end]
+        for github, provider in [('', ''), ('test-github', ''), ('', 'test-provider'), ('test-github', 'test-provider')]:
+            with self.subTest(github=bool(github), provider=bool(provider)):
+                result = subprocess.run(['bash', '-c', 'set -eu\n' + guard + '\necho MUTATION'],
+                                        env={'PATH': '/usr/bin:/bin', 'GH_TOKEN': github, 'NVIDIA_API_KEY': provider},
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode == 0, bool(github and provider))
+                self.assertEqual('MUTATION' in result.stdout, bool(github and provider))
+                self.assertNotIn('test-provider', result.stderr)
+        self.assertLess(start, WORKFLOW.index('podman pod stop'))
+        self.assertIn('NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}', WORKFLOW)
+        forwarded = next(line for line in WORKFLOW.splitlines() if 'envs:' in line)
+        self.assertIn('NVIDIA_API_KEY', forwarded)
+        self.assertNotIn('OPENAI_API_KEY', forwarded)
+
+    def test_image_configuration_has_no_credentials(self):
+        config = json.loads((ROOT / 'container/sc-agent-config.json').read_text())
+        self.assertEqual(config['activeProfile'], 'nvidia')
+        self.assertEqual(config['model']['baseUrl'], config['profiles']['nvidia']['baseUrl'])
+        self.assertNotIn('apiKey', json.dumps(config))
+        containerfile = (ROOT / 'container/Containerfile.worker').read_text()
+        self.assertNotIn('"apiKey"', containerfile)
+        self.assertIn('COPY container/sc-agent-config.json', containerfile)
+
     def test_failed_pull_preserves_running_deployment(self):
         start = WORKFLOW.index("            # Prepare every replacement")
         end = WORKFLOW.index("            # Create worker environment", start)
