@@ -379,7 +379,7 @@ remaining_implementation_seconds() {
 
 run_initial_implementation() {
   local number="$1" body="$2" prompt="$3"
-  local budget base_sha expected_branch changed_files validation_cmd rc
+  local budget base_sha expected_branch changed_files validation_cmd rc remaining
   base_sha=$(git -C "${WORKDIR}" rev-parse HEAD) || return 1
   expected_branch=$(git -C "${WORKDIR}" branch --show-current) || return 1
   if [[ -z "${expected_branch}" || "${expected_branch}" == main ]]; then
@@ -391,6 +391,9 @@ run_initial_implementation() {
     return 1
   fi
   budget=$(get_timeout_for_complexity "$(classify_issue_complexity "${body}")")
+  if [[ "${SCC_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] && (( SCC_TIMEOUT_SECONDS < budget )); then
+    budget=${SCC_TIMEOUT_SECONDS}
+  fi
   local IMPLEMENTATION_DEADLINE=$((SECONDS + budget))
   prompt="${prompt}
 
@@ -423,9 +426,15 @@ Repository execution contract:
   validation_cmd=$(get_validation_command_for_changes "${changed_files}")
   if [[ -n "${validation_cmd}" ]]; then
     log "Running scoped validation: ${validation_cmd}"
-    if (cd "${WORKDIR}" && bash -c "${validation_cmd}"); then
+    remaining=$(remaining_implementation_seconds) || return 124
+    if (cd "${WORKDIR}" && timeout --kill-after=10s "${remaining}s" bash -c "${validation_cmd}"); then
       log "Scoped validation passed for base ${base_sha}"
     else
+      rc=$?
+      if [[ "${rc}" == 124 || "${rc}" == 137 ]]; then
+        log "Scoped validation exhausted the implementation deadline"
+        return 124
+      fi
       log "Scoped validation failed for base ${base_sha}"
       return 1
     fi
@@ -472,7 +481,7 @@ run_scc_prompt() {
     scc_args+=(-yq "${prompt}")
 
     if command -v timeout >/dev/null 2>&1 && [[ "${dynamic_timeout}" =~ ^[0-9]+$ && "${dynamic_timeout}" -gt 0 ]]; then
-      timeout "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}"
+      timeout --kill-after=10s "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}"
     else
       log "WARNING: 'timeout' unavailable or dynamic_timeout invalid (${dynamic_timeout}); running SCC without timeout enforcement"
       "${SCC_BIN}" "${scc_args[@]}"

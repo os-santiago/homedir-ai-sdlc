@@ -86,6 +86,15 @@ class WorktreeImplementationTest(unittest.TestCase):
         result = self.run_case("sleep 3", budget=1)
         self.assertEqual(result.returncode, 124, result.stderr)
 
+    def test_validation_cannot_outlive_shared_deadline(self):
+        result = self.run_case("echo fixed > change.txt", validation="sleep 5", budget=1)
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("Scoped validation exhausted", result.stdout)
+
+    def test_agent_time_is_deducted_from_validation_budget(self):
+        result = self.run_case("sleep 1; echo fixed > change.txt", validation="sleep 2", budget=2)
+        self.assertEqual(result.returncode, 124, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
