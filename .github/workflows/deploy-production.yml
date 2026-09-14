@@ -71,6 +71,11 @@ jobs:
             ${{ env.REPOSITORY }}:worker-latest \
             --help
 
+      - name: Verify Homedir validation toolchain
+        run: |
+          docker run --rm --entrypoint java ${{ env.REPOSITORY }}:worker-${{ github.sha }} -version
+          docker run --rm --entrypoint mvn ${{ env.REPOSITORY }}:worker-${{ github.sha }} -version
+
   build-dashboard:
     name: Build Dashboard Container
     runs-on: ubuntu-latest
