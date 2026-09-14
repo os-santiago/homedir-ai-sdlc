@@ -15,7 +15,7 @@ def function(name):
 
 
 class WorktreeImplementationTest(unittest.TestCase):
-    def run_case(self, agent, validation="test -f change.txt", budget=5):
+    def run_case(self, agent, validation="test -f change.txt", budget=5, cap=5):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             repo = root / "repo"
@@ -36,7 +36,7 @@ class WorktreeImplementationTest(unittest.TestCase):
             env = dict(os.environ, WORKDIR=str(repo), SCC_BIN=str(binary), LOGFILE=str(root / "log"), PROMPT_CAPTURE=str(root / "prompt"))
             script = "\n".join([
                 "set -euo pipefail",
-                "SCC_TIMEOUT_SECONDS=5; SCC_PROFILE=fixture; SCC_CLEAR_HISTORY=true",
+                f"SCC_TIMEOUT_SECONDS={cap}; SCC_PROFILE=fixture; SCC_CLEAR_HISTORY=true",
                 "log() { printf '%s\\n' \"$*\"; }",
                 "classify_issue_complexity() { echo simple; }",
                 f"get_timeout_for_complexity() {{ echo {budget}; }}",
@@ -93,6 +93,10 @@ class WorktreeImplementationTest(unittest.TestCase):
 
     def test_agent_time_is_deducted_from_validation_budget(self):
         result = self.run_case("sleep 1; echo fixed > change.txt", validation="sleep 2", budget=2)
+        self.assertEqual(result.returncode, 124, result.stderr)
+
+    def test_configured_cap_limits_complexity_budget(self):
+        result = self.run_case("sleep 3", budget=5, cap=1)
         self.assertEqual(result.returncode, 124, result.stderr)
 
 

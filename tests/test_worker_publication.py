@@ -50,6 +50,15 @@ class PublicationTest(unittest.TestCase):
                 else:
                     self.assertNotEqual(result.returncode, 0)
 
+    def test_failed_risk_inspection_cannot_publish(self):
+        script = '\n'.join(['set -eu', function('create_implementation_pr'),
+                            'publication_risk_label() { return 1; }',
+                            'gh() { echo UNEXPECTED_PUBLICATION; }',
+                            'if create_implementation_pr 67 title branch pending; then exit 0; else exit $?; fi'])
+        result = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('UNEXPECTED_PUBLICATION', result.stdout)
+
     def test_policy_requires_one_real_decision(self):
         valid = json.dumps({'policy': 'test', 'decision': 'test'})
         for value in ['null', 'null\nnull', '', '{}', 'invalid', valid, valid + '\n' + valid]:
