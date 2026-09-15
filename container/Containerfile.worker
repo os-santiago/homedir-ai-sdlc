@@ -66,7 +66,7 @@ RUN mkdir -p /etc/skel/.config/gh && \
 # ============================================================================
 # Install sc-agent-cli from GitHub (connects to free models like Nemotron)
 ARG SC_AGENT_REPO=https://github.com/os-santiago/sc-agent-cli.git
-ARG SC_AGENT_REF=d78def29e8f84502f63218ac8ce078c8a4a3f965
+ARG SC_AGENT_REF=af01bae7f2eae4d87cb0b627742a407629da7abe
 
 RUN echo "Installing sc-agent-cli..." && \
     git init /opt/sc-agent-cli && \
