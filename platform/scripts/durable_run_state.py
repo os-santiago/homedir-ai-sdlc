@@ -106,14 +106,18 @@ class RunState:
                     self.data = envelope["data"]
                     if digest(encoded(self.data)) != envelope["sha256"]:
                         raise ValueError("checksum")
-                    if self.data["version"] != 1 or self.data["identity"] != self.identity:
+                    if self.data["version"] not in (1, 2) or self.data["identity"] != self.identity:
                         raise StateError("stale or incompatible run identity")
                     if self.data["limits"] != self.limits:
                         raise StateError("run limits cannot change on resume")
                     for item in self.data["artifacts"]:
                         self._artifact(item)
-                    if "candidate_repo" in self.data:
+                    if self.data["version"] == 2:
+                        if not isinstance(self.data["candidate_repo"], str) or not self.data["candidate_repo"]:
+                            raise StateError("invalid adopted candidate")
                         self.repo = Path(self.data["candidate_repo"]).resolve()
+                    elif "candidate_repo" in self.data:
+                        raise StateError("adopted candidate requires schema version 2")
                 except (ValueError, KeyError, TypeError, OSError) as exc:
                     raise StateError("corrupt run state or artifact") from exc
             else:
@@ -283,6 +287,7 @@ class RunState:
         if encoded(self._snapshot(candidate)) != encoded(self.checkpoint()):
             raise StateError("restored candidate differs from validated checkpoint")
         self.data["candidate_repo"] = str(candidate)
+        self.data["version"] = 2
         self.data["status"] = "validated"
         self._event("checkpoint_adopted", artifact=self.data["checkpoint"]["sha256"])
         self._save()

@@ -17,6 +17,10 @@ writing during capture. Cleanup sends TERM, then KILL, reaps the direct child an
 checks Linux `/proc` for remaining live group members. Failure to confirm cleanup
 leaves the reservation unresolved; it does not create validated evidence.
 
+The caller requests cancellation once through a private atomic marker, including
+during watchdog startup. This avoids relying on signal handlers being installed
+already and avoids repeated signals during watchdog shutdown.
+
 The watchdog retains its deadline and lock if the invoking caller is killed. When
 it exits, the next caller can acquire the lock and recover the interrupted
 reservation with its full charge. Tests exercise this with SIGKILL, not just an
@@ -58,7 +62,10 @@ Scratch and state roots must be separate from the candidate checkout. Git comman
 have individual 30-second limits; restoration scheduling and its lifetime compute
 accounting remain part of the orchestration integration.
 
-The ledger stores an additive `candidate_repo` field while its original run,
+Adoption upgrades the ledger to schema version 2 with a `candidate_repo` field,
+so older readers fail closed instead of silently resuming the original checkout.
+The new reader also accepts version 1 ledgers that have not adopted a candidate.
+The original run,
 requirement, base, policy and plan identity stays fixed. `adopt_checkpoint` preserves
 attempts, waits and edit/validation balances. Reopening that same run follows the
 adopted candidate; it does not create a new run with replenished limits. Partial

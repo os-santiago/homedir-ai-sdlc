@@ -55,6 +55,7 @@ def stop_group(process):
 def guard(spec_path, result_path, lock_fd):
     """Retain the inherited writer lock and deadline if the caller crashes."""
     spec = json.loads(Path(spec_path).read_text())
+    cancellation_path = Path(spec_path).with_name("cancel.json")
     cancelled = False
 
     def cancel(_signum, _frame):
@@ -69,7 +70,7 @@ def guard(spec_path, result_path, lock_fd):
     try:
         if started >= spec["deadline"]:
             outcome = "timeout"
-        elif cancelled:
+        elif cancelled or cancellation_path.exists():
             outcome = "cancelled"
         else:
             process = subprocess.Popen(spec["argv"], cwd=spec["repo"],
@@ -78,7 +79,7 @@ def guard(spec_path, result_path, lock_fd):
                                        stderr=subprocess.DEVNULL, start_new_session=True,
                                        pass_fds=(lock_fd,))
             while True:
-                if cancelled:
+                if cancelled or cancellation_path.exists():
                     outcome = "cancelled"
                     break
                 if time.monotonic() >= spec["deadline"]:
@@ -119,13 +120,13 @@ def execute_step(run, phase, seconds, step_id, argv, cancelled=lambda: False):
         try:
             while watchdog.poll() is None:
                 if not cancellation_sent and cancelled():
-                    watchdog.send_signal(signal.SIGTERM)
+                    atomic_write(private / "cancel.json", {"cancelled": True})
                     cancellation_sent = True
                 if time.monotonic() > started + seconds + 5:
                     raise StateError("watchdog exceeded cleanup allowance; reconcile before recovery")
                 time.sleep(0.02)
         except BaseException:
-            watchdog.send_signal(signal.SIGTERM)
+            atomic_write(private / "cancel.json", {"cancelled": True})
             watchdog.wait(timeout=5)
             # A caller cancellation still preserves evidence when cleanup succeeds.
             if result.exists() and watchdog.returncode == 0:
