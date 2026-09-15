@@ -86,6 +86,12 @@ class DurableRunnerTest(unittest.TestCase):
             self.assertIsNone(run.data["active"])
             self.assertTrue(run.data["artifacts"])
 
+    def test_cancellation_during_watchdog_startup_is_acknowledged(self):
+        with self.open() as run:
+            report = self.execute(run, "import time; time.sleep(30)", cancelled=lambda: True)
+            self.assertEqual(report["outcome"], "cancelled")
+            self.assertIsNone(run.data["active"])
+
     def test_nonzero_and_missing_command_remain_untrusted(self):
         with self.open() as run:
             report = self.execute(run, "from pathlib import Path; Path('partial').write_text('saved'); raise SystemExit(7)")
@@ -155,6 +161,7 @@ with RunState(sys.argv[1], "run", sys.argv[2], json.loads(sys.argv[3]), edit_sec
             remaining = dict(run.data["remaining"])
             attempts = run.data["attempts"]
             restored = restore_checkpoint(run, self.root / "scratch")
+            self.assertEqual(run.data["version"], 2)
             self.assertTrue((self.repo / "partial").exists())
             self.assertFalse((restored / "partial").exists())
             self.assertEqual((restored / "new").read_bytes(), b"\x00binary")
