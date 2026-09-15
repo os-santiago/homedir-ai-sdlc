@@ -20,3 +20,7 @@ routing change. CLI timeout is preserved as exit 124. This does not provide
 resumable checkpoints or exactly-once execution.
 
 Validation: `python3 -m unittest discover -s tests -p 'test_worker*.py' -v`.
+
+The [offline durable ledger](durable-run-state.md) adds tested state primitives
+for the proposed bounded route. It is not connected to this production path;
+the shared deadline behavior described above still applies to the active worker.
