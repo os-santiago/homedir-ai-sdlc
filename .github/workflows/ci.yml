@@ -8,6 +8,8 @@ on:
       - 'events-service/**'
       - 'future-go/components/implementation/**'
       - 'platform/scripts/homedir-sdlc-worker.sh'
+      - 'platform/scripts/durable_run_state.py'
+      - 'tests/test_worker_durable_state.py'
       - 'tests/test_worker_exit_codes.py'
       - 'tests/test_worker_budget.py'
       - 'tests/test_worker_publication.py'
@@ -47,6 +49,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_worker_budget.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_publication.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_notifications.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_durable_state.py' -v
           python3 -m unittest discover -s tests -p 'test_deployment_preparation.py' -v
 
   events-service:
