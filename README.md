@@ -6,11 +6,11 @@ Sistema autónomo de desarrollo que gestiona el ciclo completo de issues en GitH
 
 ## Estado Actual
 
-- **Autonomía**: 99% (post-fixes 2026-07-12)
-- **Tiempo E2E**: 16-20 minutos (issue → merged → deployed)
-- **Deployment**: ✅ **Fully Containerized** (Podman) + CI/CD automático
-- **Worker**: Bash script (2,476 líneas) + política-driven decision making
-- **CI/CD**: Push to main → Build containers → Deploy to production (zero manual steps)
+- **Validación actual (2026-09-15)**: los pilotos recientes no completaron el flujo hasta producción; no hay una tasa de autonomía ni un tiempo E2E verificados.
+- **Runtime**: worker Bash y servicios en contenedores Podman; CI/CD sujeto a disponibilidad del registro y reglas de revisión.
+- **Próximo diseño**: pasos acotados y reanudables, validación independiente y evidencia de producción. Es una propuesta incremental, todavía no implementada.
+
+Consulta la [decisión de diseño y sus criterios de promoción](docs/architecture/adr/0003-bounded-evidence-based-delivery.md) y la [evidencia de los pilotos](docs/worker-validation-toolchain.md). Las cifras históricas no constituyen garantías actuales.
 
 ## 📐 Architecture
 
@@ -145,21 +145,17 @@ Esta guía completa explica:
 - ✅ Formato requerido del issue (Description, Current state, Desired state, Acceptance Criteria)
 - ✅ Labels obligatorios: `ready-to-implement` + `priority:P3` (o P1/P2)
 - ✅ Ejemplos de issues (bug fix simple, feature request, documentación)
-- ✅ Timeline del flujo (0 min → issue creado → 20 min → PR merged)
+- Secuencia objetivo del flujo; los tiempos históricos no son garantías actuales
 - ✅ Mejores prácticas (principio ADEV, criterios verificables, atomicidad)
 - ✅ Troubleshooting (issue no procesado, worker marcó needs-human, etc.)
 
-**Flujo end-to-end típico:**
+**Flujo objetivo (sin duración garantizada):**
 ```
-00:00  Creas issue con labels correctos
-00:03  Worker detecta y acepta
-00:06  SCC genera código
-00:15  PR creado
-00:19  CI checks pasan
-00:20  Auto-merge → Deployed a producción ✓
+Requerimiento listo → admisión → implementación → validación
+→ PR y revisiones requeridas → CI → despliegue → verificación de producción
 ```
 
-**Tiempo total**: 10-30 minutos sin intervención humana
+Los fallos de capacidad, las validaciones y las revisiones pueden detener el flujo. Un PR mergeado no prueba por sí solo que la funcionalidad esté operativa en producción.
 
 ## 🤝 Contributing
 
