@@ -79,6 +79,10 @@ exactly-once GitHub delivery guarantee.
 #75 remains open until those integration criteria are met. A successful ledger
 test does not establish an autonomous requirement-to-production delivery.
 
+The subsequent [offline supervisor](offline-step-supervisor.md) implements
+trusted-fixture deadlines and fresh-checkout restoration without replenishing
+this ledger. Its restricted executor and production integration gates remain open.
+
 ## Validation
 
 `python3 -m unittest discover -s tests -p 'test_worker_durable_state.py' -v`

@@ -112,6 +112,8 @@ class RunState:
                         raise StateError("run limits cannot change on resume")
                     for item in self.data["artifacts"]:
                         self._artifact(item)
+                    if "candidate_repo" in self.data:
+                        self.repo = Path(self.data["candidate_repo"]).resolve()
                 except (ValueError, KeyError, TypeError, OSError) as exc:
                     raise StateError("corrupt run state or artifact") from exc
             else:
@@ -141,9 +143,9 @@ class RunState:
     def _event(self, kind, **fields):
         self.data["events"].append(dict(kind=kind, timestamp=self.clock(), **fields))
 
-    def _git(self, *args):
+    def _git(self, *args, repo=None):
         with tempfile.TemporaryFile() as output:
-            result = subprocess.run(["git", "-C", str(self.repo), *args], stdout=output,
+            result = subprocess.run(["git", "-C", str(repo or self.repo), *args], stdout=output,
                                     stderr=subprocess.DEVNULL, timeout=30)
             if result.returncode:
                 raise StateError("repository capture failed")
@@ -153,21 +155,22 @@ class RunState:
                 raise StateError("oversized repository output; source work retained")
             return data
 
-    def _snapshot(self):
-        if self._git("rev-parse", "HEAD").decode().strip() != self.identity["base_sha"]:
+    def _snapshot(self, repo=None):
+        repo = Path(repo or self.repo).resolve()
+        if self._git("rev-parse", "HEAD", repo=repo).decode().strip() != self.identity["base_sha"]:
             raise StateError("base changed; preserve checkout for manual reconciliation")
-        patch = self._git("diff", "--binary", "--no-ext-diff", "--no-textconv", self.identity["base_sha"], "--")
+        patch = self._git("diff", "--binary", "--no-ext-diff", "--no-textconv", self.identity["base_sha"], "--", repo=repo)
         files = []
         size = len(patch)
-        for raw in self._git("ls-files", "--others", "--exclude-standard", "-z").split(b"\0"):
+        for raw in self._git("ls-files", "--others", "--exclude-standard", "-z", repo=repo).split(b"\0"):
             if not raw:
                 continue
             name = os.fsdecode(raw)
-            path = self.repo / name
-            if not path.resolve().is_relative_to(self.repo):
+            path = repo / name
+            if not path.resolve().is_relative_to(repo):
                 raise StateError("untracked path escapes repository")
             cursor = path
-            while cursor != self.repo:
+            while cursor != repo:
                 if cursor.is_symlink():
                     raise StateError("untracked symlinks require manual preservation")
                 cursor = cursor.parent
@@ -268,6 +271,22 @@ class RunState:
         if self._git("rev-parse", "HEAD").decode().strip() != self.identity["base_sha"]:
             raise StateError("stale base")
         return self._artifact(item)
+
+    @locked
+    def adopt_checkpoint(self, repo):
+        """Adopt an independently restored candidate without resetting the run ledger."""
+        if self.data["active"] or self.data["publication"] or self.data["status"] == "waiting":
+            raise StateError("run must be quiescent before checkpoint adoption")
+        candidate = Path(repo).resolve()
+        if candidate == self.repo or self.root.is_relative_to(candidate) or candidate.is_relative_to(self.root):
+            raise StateError("checkpoint candidate must be separate from source and state")
+        if encoded(self._snapshot(candidate)) != encoded(self.checkpoint()):
+            raise StateError("restored candidate differs from validated checkpoint")
+        self.data["candidate_repo"] = str(candidate)
+        self.data["status"] = "validated"
+        self._event("checkpoint_adopted", artifact=self.data["checkpoint"]["sha256"])
+        self._save()
+        self.repo = candidate
 
     @locked
     def wait(self, seconds):
