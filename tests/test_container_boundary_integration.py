@@ -112,19 +112,29 @@ print("limits-enforced")
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_memory_exhaustion_is_confined_to_container(self):
-        result, state = self.probe("data = bytearray(256 * 1024 * 1024)\n")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertTrue(state["OOMKilled"])
+        result, _ = self.probe('''import subprocess, sys
+from pathlib import Path
+def oom_kills():
+    events = dict(line.split() for line in Path("/sys/fs/cgroup/memory.events").read_text().splitlines())
+    return int(events["oom_kill"])
+before = oom_kills()
+child = subprocess.run([sys.executable, "-c", "data = bytearray(256 * 1024 * 1024)"], timeout=5)
+assert child.returncode != 0, child.returncode
+assert oom_kills() > before, "kernel did not record a cgroup OOM kill"
+print("oom-confined")
+''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("oom-confined", result.stdout)
 
     def test_pid_limit_rejects_excess_children(self):
-        result, _ = self.probe('''import errno, os, signal, time
+        result, _ = self.probe('''import errno, os, time
 children = []
 try:
     try:
         for _ in range(32):
             pid = os.fork()
             if pid == 0:
-                time.sleep(30)
+                time.sleep(2)
                 os._exit(0)
             children.append(pid)
     except OSError as exc:
@@ -133,8 +143,6 @@ try:
     else:
         raise AssertionError("PID limit not enforced")
 finally:
-    for pid in children:
-        os.kill(pid, signal.SIGKILL)
     for pid in children:
         os.waitpid(pid, 0)
 print("pid-limit-enforced")
