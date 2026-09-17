@@ -75,6 +75,10 @@ partial work on timeout/cancellation, and reconcile container identity/lifecycle
 with the existing ledger. No automatic application of container output to the
 repository is implemented. Candidate tests need the same restrictions as generation.
 
+The subsequent [offline receipt collector](container-receipts.md) preserves complete
+emitted proposals and reconciles container identity with the ledger. Unsent tmpfs
+changes, candidate application and production integration remain outside that step.
+
 Shared-kernel containers do not establish protection from every kernel/runtime
 vulnerability or qualify a public multi-tenant service. Evaluate stronger isolation
 before accepting hostile tenants. For the current lane, #75 remains open and the

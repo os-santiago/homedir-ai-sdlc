@@ -11,6 +11,9 @@ on:
       - 'platform/scripts/durable_run_state.py'
       - 'platform/scripts/durable_step_runner.py'
       - 'platform/scripts/container_boundary.py'
+      - 'platform/scripts/container_receipts.py'
+      - 'tests/test_worker_container_receipts.py'
+      - 'tests/test_container_receipts_integration.py'
       - 'tests/test_worker_container_boundary.py'
       - 'tests/test_container_boundary_integration.py'
       - 'tests/test_worker_durable_runner.py'
@@ -57,6 +60,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_worker_durable_state.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_durable_runner.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_container_boundary.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_container_receipts.py' -v
           python3 -m unittest discover -s tests -p 'test_deployment_preparation.py' -v
 
   container-boundary:
@@ -76,6 +80,7 @@ jobs:
           image_id=$(sudo podman image inspect "${FIXTURE_IMAGE}" --format '{{.Id}}')
           image_id="${image_id#sha256:}"
           sudo env SDLC_BOUNDARY_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_container_boundary_integration.py' -v
+          sudo env SDLC_BOUNDARY_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_container_receipts_integration.py' -v
 
   events-service:
     runs-on: ubuntu-latest
