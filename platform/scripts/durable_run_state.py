@@ -106,18 +106,20 @@ class RunState:
                     self.data = envelope["data"]
                     if digest(encoded(self.data)) != envelope["sha256"]:
                         raise ValueError("checksum")
-                    if self.data["version"] not in (1, 2) or self.data["identity"] != self.identity:
+                    if self.data["version"] not in (1, 2, 3) or self.data["identity"] != self.identity:
                         raise StateError("stale or incompatible run identity")
                     if self.data["limits"] != self.limits:
                         raise StateError("run limits cannot change on resume")
                     for item in self.data["artifacts"]:
                         self._artifact(item)
-                    if self.data["version"] == 2:
+                    if self.data["version"] >= 2 and "candidate_repo" in self.data:
                         if not isinstance(self.data["candidate_repo"], str) or not self.data["candidate_repo"]:
                             raise StateError("invalid adopted candidate")
                         self.repo = Path(self.data["candidate_repo"]).resolve()
                     elif "candidate_repo" in self.data:
                         raise StateError("adopted candidate requires schema version 2")
+                    elif self.data["version"] == 2:
+                        raise StateError("missing adopted candidate")
                 except (ValueError, KeyError, TypeError, OSError) as exc:
                     raise StateError("corrupt run state or artifact") from exc
             else:
@@ -238,6 +240,8 @@ class RunState:
 
     @locked
     def finish(self, outcome, elapsed):
+        if self.data.get("external_container"):
+            raise StateError("container lifecycle must be reconciled before completion")
         active = self.data["active"]
         if active is None or outcome not in ("success", "failure", "timeout", "cancelled"):
             raise StateError("invalid completion")
@@ -257,6 +261,8 @@ class RunState:
 
     @locked
     def recover_interrupted(self):
+        if self.data.get("external_container"):
+            raise StateError("container lifecycle must be reconciled before recovery")
         if self.data["active"] is None:
             raise StateError("no interrupted reservation")
         active = self.data["active"]
@@ -287,11 +293,64 @@ class RunState:
         if encoded(self._snapshot(candidate)) != encoded(self.checkpoint()):
             raise StateError("restored candidate differs from validated checkpoint")
         self.data["candidate_repo"] = str(candidate)
-        self.data["version"] = 2
+        self.data["version"] = max(2, self.data["version"])
         self.data["status"] = "validated"
         self._event("checkpoint_adopted", artifact=self.data["checkpoint"]["sha256"])
         self._save()
         self.repo = candidate
+
+    @locked
+    def start_container_capture(self, name, image_id):
+        active = self.data["active"]
+        if not active or active["phase"] != "edit" or self.data.get("external_container"):
+            raise StateError("unused edit reservation required")
+        if not re.fullmatch(r"sdlc-boundary-[0-9a-f]{32}", name) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+            raise StateError("invalid container identity")
+        self.data["version"] = 3
+        self.data["external_container"] = {"name": name, "image_id": image_id, "frames": 0, "receipt": None}
+        self._event("container_intent", name=name)
+        self._save()
+
+    def _store_container_receipt(self, entries, frames, observation):
+        container = self.data["external_container"]
+        payload = {"schema": 1, "kind": "container-receipt", "identity": self.identity,
+                   "step": self.data["active"]["step"], "attempt": self.data["active"]["attempt"],
+                   "container": container["name"], "image_id": container["image_id"],
+                   "frames": frames, "observation": observation, "entries": entries}
+        raw = encoded(payload)
+        if len(raw) > 2 * 1024 * 1024:
+            raise StateError("receipt size limit exceeded")
+        sha = digest(raw)
+        item = {"name": f"artifact-{sha}.json", "sha256": sha, "trusted": False}
+        atomic_write(self.path / item["name"], payload)
+        self.data["artifacts"].append(item)
+        container["receipt"] = item
+        container["frames"] = frames
+        self.data["last_container_receipt"] = item
+
+    @locked
+    def container_progress(self, entries, frames):
+        container = self.data.get("external_container")
+        if not container or type(frames) is not int or frames != container["frames"] + 1 or frames > 32:
+            raise StateError("invalid container progress sequence")
+        self._store_container_receipt(entries, frames, "streaming")
+        self._save()
+
+    @locked
+    def finish_container_capture(self, observation):
+        """Trusted observer calls only after verifying container removal."""
+        container = self.data.get("external_container")
+        if not container or observation not in {"exited", "failed", "timeout", "invalid", "cancelled", "interrupted"}:
+            raise StateError("invalid container completion")
+        entries = self._artifact(container["receipt"])["entries"] if container["receipt"] else []
+        self._store_container_receipt(entries, container["frames"], observation)
+        self._event("container_capture_finished", observation=observation,
+                    charged_seconds=self.data["active"]["seconds"], name=container["name"])
+        # No refund for container startup/cleanup or ambiguous elapsed execution.
+        self.data["active"] = None
+        self.data["external_container"] = None
+        self.data["status"] = "untrusted"
+        self._save()
 
     @locked
     def wait(self, seconds):
