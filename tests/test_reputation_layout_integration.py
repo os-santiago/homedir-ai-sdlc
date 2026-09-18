@@ -1,12 +1,16 @@
 """Real browser positive/negative controls; no external site or model access."""
 
 import os
+import json
+import subprocess
 from pathlib import Path
 import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'platform/scripts'))
-from reputation_layout_probe import probe_rendered_page
+from reputation_layout_probe import browser_boundary, probe_rendered_page
+from container_boundary import runtime_environment
+from container_receipts import reconcile_container
 
 IMAGE = os.environ.get('SDLC_BROWSER_TEST_IMAGE')
 HTML = '''<!doctype html><html><body><main>
@@ -31,6 +35,29 @@ CSS = '''body { margin:16px; font:16px Arial; }
 
 @unittest.skipUnless(IMAGE, 'set SDLC_BROWSER_TEST_IMAGE to the reviewed immutable validator image')
 class ReputationLayoutIntegrationTest(unittest.TestCase):
+    def test_outer_process_still_has_no_capabilities_or_chroot_authority(self):
+        name, argv = browser_boundary(IMAGE)
+        script = '''const fs = require('node:fs');
+const cp = require('node:child_process');
+const binary = ['/usr/sbin/chroot', '/usr/bin/chroot'].find(p => fs.existsSync(p));
+if (!binary) process.exit(2);
+const result = cp.spawnSync(binary, ['/', '/bin/true'], {encoding:'utf8'});
+const status = fs.readFileSync('/proc/self/status', 'utf8');
+console.log(JSON.stringify({uid:process.getuid(), status, denied:Number.isInteger(result.status) && result.status !== 0 && result.stderr.includes('Operation not permitted')}));'''
+        argv[-1:] = ['-e', script]
+        try:
+            result = subprocess.run(argv, input=b'', capture_output=True,
+                                    env=runtime_environment(), timeout=35)
+            self.assertEqual(result.returncode, 0)
+            report = json.loads(result.stdout)
+            self.assertEqual(report['uid'], 10000)
+            self.assertTrue(report['denied'])
+            self.assertIn('CapEff:\t0000000000000000', report['status'])
+            self.assertIn('NoNewPrivs:\t1', report['status'])
+            self.assertIn('Seccomp:\t2', report['status'])
+        finally:
+            reconcile_container(name)
+
     def test_good_layout_passes_both_viewports_and_name_variants(self):
         result = probe_rendered_page(IMAGE, HTML, CSS)
         self.assertTrue(result['passed'], result)

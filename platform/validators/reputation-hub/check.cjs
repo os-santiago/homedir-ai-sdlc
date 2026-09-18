@@ -10,11 +10,7 @@ async function main() {
   if (Object.keys(input).sort().join(',') !== 'css,html' ||
       typeof input.html !== 'string' || typeof input.css !== 'string') throw new Error('input schema');
   const inputHash = crypto.createHash('sha256').update(raw).digest('hex');
-  // The outer rootless/non-privileged container is the trust boundary. Chromium's
-  // user-namespace sandbox cannot initialize on the current WSL Podman profile;
-  // leaving it enabled would hang the validator instead of producing evidence.
-  const browser = await chromium.launch({ chromiumSandbox: false,
-    args: ['--disable-dev-shm-usage'] });
+  const browser = await chromium.launch({ chromiumSandbox: true, timeout: 10000 });
   const measurements = [];
   try {
     for (const width of [1024, 375]) {
@@ -24,7 +20,13 @@ async function main() {
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
       await page.setContent(input.html, { waitUntil: 'domcontentloaded', timeout: 5000 });
-      await page.addStyleTag({ content: input.css });
+      // addStyleTag waits on page-side events, which cannot run when scripts are
+      // disabled. Inject text synchronously through trusted instrumentation.
+      await page.evaluate(css => {
+        const style = document.createElement('style');
+        style.textContent = css;
+        document.head.appendChild(style);
+      }, input.css);
       // Script execution in the document is disabled. This evaluator is trusted
       // Playwright instrumentation, not code taken from the candidate.
       const results = await page.evaluate(() => {
