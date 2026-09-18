@@ -1,6 +1,7 @@
 """Offline browser observation of rendered HTML; does not authorize publication."""
 
 import json
+from pathlib import Path
 import re
 import subprocess
 import uuid
@@ -14,11 +15,13 @@ def browser_boundary(image_id):
     if not isinstance(image_id, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', image_id):
         raise StateError('preloaded reviewed validator image required')
     name = 'sdlc-boundary-' + uuid.uuid4().hex
+    seccomp = Path(__file__).resolve().parents[1] / 'validators/reputation-hub/seccomp.json'
     argv = ['podman', '--remote=false', 'run', '--interactive', '--name', name,
             '--label', 'io.os-santiago.sdlc=boundary-qualification',
             '--pull=never', '--network=none', '--pid=private', '--ipc=private', '--uts=private',
             '--cgroupns=private', '--cgroups=enabled', '--user=10000:10000',
             '--cap-drop=ALL', '--security-opt=no-new-privileges',
+            f'--security-opt=seccomp={seccomp}',
             '--read-only', '--read-only-tmpfs=false', '--unsetenv-all',
             '--env=PATH=/usr/local/bin:/usr/bin:/bin', '--env=HOME=/home/runner',
             '--env=LANG=C.UTF-8', '--env=PLAYWRIGHT_BROWSERS_PATH=/ms-playwright',
@@ -35,9 +38,7 @@ def probe_rendered_page(image_id, html, css):
     """Only trusted orchestration invokes this with an already rendered page.
 
     No candidate code, mounts, credentials, network or arbitrary test argv.
-    HTML/CSS are data; page scripts are disabled. The outer non-privileged
-    container is the process boundary; Chromium's user-namespace sandbox is
-    unavailable on the current WSL Podman profile and is disabled explicitly.
+    HTML/CSS are data; page scripts are disabled and Chromium's sandbox is required.
     This component probe cannot prove Qute compilation or deployed revision.
     """
     if not isinstance(html, str) or not isinstance(css, str):
