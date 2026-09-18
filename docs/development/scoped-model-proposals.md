@@ -95,3 +95,7 @@ pilot evidence. Before further live qualification, establish a provider that can
 return a complete scoped proposal within the request limit; then measure the
 actual proposal and progress to full application validation. Repeating larger
 whole-issue timeouts would not address the observed capacity/latency failures.
+
+The subsequent [inference profile qualification](inference-profile-qualification.md)
+records explicit generation settings, literal source context and new live
+comparisons. The original experiment above remains unchanged historical evidence.
