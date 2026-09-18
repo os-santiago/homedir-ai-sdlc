@@ -43,7 +43,20 @@ def probe_rendered_page(image_id, html, css):
     """
     if not isinstance(html, str) or not isinstance(css, str):
         raise StateError('HTML and CSS strings required')
-    payload = encoded({'html': html, 'css': css})
+    return _probe(image_id, {'html': html, 'css': css})
+
+
+def probe_qute_rows(image_id, rows, css):
+    """Render scoped Qute fragments with fixed data inside the validator container."""
+    if (not isinstance(rows, list) or not 1 <= len(rows) <= 8 or
+            any(not isinstance(row, str) or len(row.encode()) > 32000 for row in rows) or
+            not isinstance(css, str)):
+        raise StateError('bounded Qute rows and CSS required')
+    return _probe(image_id, {'rows': rows, 'css': css})
+
+
+def _probe(image_id, data):
+    payload = encoded(data)
     if len(payload) > 1024 * 1024:
         raise StateError('browser input limit exceeded')
     name, argv = browser_boundary(image_id)

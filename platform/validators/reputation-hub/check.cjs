@@ -2,13 +2,26 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright');
+const { spawnSync } = require('node:child_process');
 
 async function main() {
   const raw = fs.readFileSync(0);
   if (raw.length > 1024 * 1024) throw new Error('input limit');
   const input = JSON.parse(raw);
-  if (Object.keys(input).sort().join(',') !== 'css,html' ||
-      typeof input.html !== 'string' || typeof input.css !== 'string') throw new Error('input schema');
+  const shape = Object.keys(input).sort().join(',');
+  if (typeof input.css !== 'string') throw new Error('input schema');
+  let html;
+  if (shape === 'css,html' && typeof input.html === 'string') {
+    html = input.html;
+  } else if (shape === 'css,rows' && Array.isArray(input.rows) && input.rows.length >= 1 && input.rows.length <= 8 &&
+      input.rows.every(row => typeof row === 'string' && Buffer.byteLength(row) <= 32000)) {
+    const rendered = spawnSync('/usr/bin/java', ['-Xmx96m', '-XX:ActiveProcessorCount=1', '-cp', '/opt/validator/qute:/opt/validator/qute/*', 'RenderRows'], {
+      input: input.rows.map(row => Buffer.from(row).toString('base64')).join('\n') + '\n', encoding: 'utf8',
+      timeout: 10000, maxBuffer: 1024 * 1024
+    });
+    if (rendered.status !== 0 || rendered.error) throw new Error('row rendering failed');
+    html = rendered.stdout;
+  } else { throw new Error('input schema'); }
   const inputHash = crypto.createHash('sha256').update(raw).digest('hex');
   const browser = await chromium.launch({ chromiumSandbox: true, timeout: 10000 });
   const measurements = [];
@@ -19,7 +32,7 @@ async function main() {
       await context.route('**/*', route => route.abort());
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
-      await page.setContent(input.html, { waitUntil: 'domcontentloaded', timeout: 5000 });
+      await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 5000 });
       // addStyleTag waits on page-side events, which cannot run when scripts are
       // disabled. Inject text synchronously through trusted instrumentation.
       await page.evaluate(css => {
