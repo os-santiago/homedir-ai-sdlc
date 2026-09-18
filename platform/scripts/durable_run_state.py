@@ -106,7 +106,7 @@ class RunState:
                     self.data = envelope["data"]
                     if digest(encoded(self.data)) != envelope["sha256"]:
                         raise ValueError("checksum")
-                    if self.data["version"] not in (1, 2, 3) or self.data["identity"] != self.identity:
+                    if self.data["version"] not in (1, 2, 3, 4) or self.data["identity"] != self.identity:
                         raise StateError("stale or incompatible run identity")
                     if self.data["limits"] != self.limits:
                         raise StateError("run limits cannot change on resume")
@@ -306,7 +306,7 @@ class RunState:
             raise StateError("unused edit reservation required")
         if not re.fullmatch(r"sdlc-boundary-[0-9a-f]{32}", name) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
             raise StateError("invalid container identity")
-        self.data["version"] = 3
+        self.data["version"] = max(3, self.data["version"])
         self.data["external_container"] = {"name": name, "image_id": image_id, "frames": 0, "receipt": None}
         self._event("container_intent", name=name)
         self._save()
@@ -327,6 +327,39 @@ class RunState:
         container["receipt"] = item
         container["frames"] = frames
         self.data["last_container_receipt"] = item
+        if self.data['version'] >= 4:
+            self.data['last_proposal'] = item
+
+    @locked
+    def finish_file_proposal(self, entries, observation, evidence):
+        """Record data-only provider output after its bounded process has stopped.
+
+        The trusted adapter validates scope before this call. No time is refunded
+        and no validation checkpoint is created, including on provider failure.
+        """
+        active = self.data['active']
+        if not active or active['phase'] != 'edit' or self.data.get('external_container'):
+            raise StateError('unused edit reservation required')
+        if observation not in {'proposal', 'rejected', 'failed'} or not isinstance(entries, list):
+            raise StateError('invalid file proposal completion')
+        if observation != 'proposal' and entries:
+            raise StateError('failed proposal cannot contain applicable entries')
+        payload = {'schema': 1, 'kind': 'file-proposal', 'identity': self.identity,
+                   'step': active['step'], 'attempt': active['attempt'],
+                   'observation': observation, 'entries': entries, 'evidence': evidence}
+        raw = encoded(payload)
+        if len(raw) > 2 * 1024 * 1024:
+            raise StateError('proposal size limit exceeded')
+        sha = digest(raw)
+        item = {'name': f'artifact-{sha}.json', 'sha256': sha, 'trusted': False}
+        atomic_write(self.path / item['name'], payload)
+        self.data['artifacts'].append(item)
+        self.data['version'] = 4
+        self.data['last_proposal'] = item
+        self.data['active'] = None
+        self.data['status'] = 'untrusted'
+        self._event('file_proposal_finished', observation=observation, charged_seconds=active['seconds'])
+        self._save()
 
     @locked
     def container_progress(self, entries, frames):

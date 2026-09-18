@@ -22,11 +22,11 @@ def materialize_receipt(run, scratch_root, allowed_paths):
     if (run.data['active'] or run.data.get('external_container') or
             run.data['publication'] or run.data['status'] == 'waiting'):
         raise StateError('run must be quiescent')
-    item = run.data.get('last_container_receipt')
+    item = run.data.get('last_proposal') or run.data.get('last_container_receipt')
     if not item:
         raise StateError('recorded receipt required')
     receipt = run._artifact(item)
-    if (receipt.get('schema') != 1 or receipt.get('kind') != 'container-receipt' or
+    if (receipt.get('schema') != 1 or receipt.get('kind') not in {'container-receipt', 'file-proposal'} or
             receipt.get('identity') != run.identity or
             receipt.get('observation') == 'streaming'):
         raise StateError('completed receipt with matching identity required')

@@ -81,7 +81,7 @@ def probe_candidate(run, report, image_id):
     """Shadow observation only: no checkpoint, budget reset or publication transition."""
     if run.data['active'] or run.data.get('external_container') or run.data['publication'] or run.data['status'] == 'waiting':
         raise StateError('quiescent run required')
-    receipt_ref = run.data.get('last_container_receipt')
+    receipt_ref = run.data.get('last_proposal') or run.data.get('last_container_receipt')
     if (not receipt_ref or report.get('kind') != 'untrusted-candidate' or
             report.get('identity') != run.identity or report.get('receipt_sha256') != receipt_ref['sha256'] or
             not set(report.get('allowed_paths', [])).issubset(SCOPE)):
