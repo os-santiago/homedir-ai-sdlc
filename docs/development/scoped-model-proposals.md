@@ -78,6 +78,16 @@ the first SSH connection used the wrong local known-hosts context; the second
 returned a nonzero transport exit without retained diagnostics. Its reservations
 were preserved separately. It is not counted as a successful model experiment.
 
+After verifying that no remote proposal helper remained alive, both ledgers were
+closed as `untrusted`, with two attempts, zero remaining edit seconds and no
+checkpoint. The sanitized combined observation has SHA-256
+`27420b52e054006cfd0bd93392f315f0abf227c85a7fcb576052a3b17ff6332d`.
+Both live model attempts used the same request hash
+`9bb3af418c3032dd12a2445be6c3f5cbeaf75e01023ca965889b8db0b2ff5a5d`.
+The Lightning and Poolside receipt hashes are respectively
+`30705d3619781b9f0e403a620f6f7b7e3da56a9c5d5882719657f00e1b1f795e`
+and `cdac9daf1521589e484684bd4c09877c994fd89386712c187ed184fffc595fa1`.
+
 The mandatory real Qute/browser suite also exercises scoped JSON proposal →
 schema-4 receipt → candidate → observation with a deterministic positive fixture.
 That control verifies the connected path, but is explicitly not model-generated
