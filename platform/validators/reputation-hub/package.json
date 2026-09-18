@@ -1,0 +1,6 @@
+{
+  "name": "homedir-reputation-hub-validator",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": { "playwright": "1.63.0" }
+}
