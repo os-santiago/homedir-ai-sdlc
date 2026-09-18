@@ -11,6 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'platform/scripts')
 from reputation_layout_probe import browser_boundary, probe_rendered_page
 from container_boundary import runtime_environment
 from container_receipts import reconcile_container
+from test_worker_reputation_candidate import CandidateFixture, ROW
+from reputation_candidate_probe import probe_candidate
+from reputation_layout_probe import probe_qute_rows
+from durable_run_state import StateError
 
 IMAGE = os.environ.get('SDLC_BROWSER_TEST_IMAGE')
 HTML = '''<!doctype html><html><body><main>
@@ -31,6 +35,27 @@ CSS = '''body { margin:16px; font:16px Arial; }
 .hub-score { white-space:nowrap; }
 @media(max-width:600px) { .hub-avatar {display:none} .hub-list-item {grid-template-columns:auto minmax(0,1fr) auto;} }
 '''
+
+
+@unittest.skipUnless(IMAGE, 'set SDLC_BROWSER_TEST_IMAGE to the reviewed immutable validator image')
+class CandidateQuteIntegrationTest(CandidateFixture):
+    def test_receipt_to_candidate_to_qute_to_browser_retains_untrusted_state(self):
+        with self.open() as run:
+            report = self.candidate(run, CSS.encode())
+            evidence = probe_candidate(run, report, IMAGE)
+            self.assertTrue(evidence['result']['passed'], evidence)
+            self.assertEqual(evidence['row_templates'], 5)
+            self.assertEqual(evidence['snapshot_sha256'], report['snapshot_sha256'])
+            self.assertEqual(run.data['status'], 'untrusted')
+            self.assertIsNone(run.data['checkpoint'])
+
+    def test_qute_fallback_tooltip_and_invalid_expression_are_rejected(self):
+        missing = ROW.replace('<span title="{entry.displayName}">', '<span>')
+        self.assertFalse(probe_qute_rows(IMAGE, [missing], CSS)['passed'])
+        with self.assertRaises(StateError):
+            probe_qute_rows(IMAGE, [ROW.replace('entry.displayName', 'missing.value')], CSS)
+        with self.assertRaises(StateError):
+            probe_qute_rows(IMAGE, [ROW.replace('entry.displayName', 'entry.displayName.getClass()')], CSS)
 
 
 @unittest.skipUnless(IMAGE, 'set SDLC_BROWSER_TEST_IMAGE to the reviewed immutable validator image')
