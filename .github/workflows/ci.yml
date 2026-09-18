@@ -17,6 +17,7 @@ on:
       - 'platform/scripts/reputation_layout_probe.py'
       - 'platform/validators/reputation-hub/**'
       - 'tests/test_worker_reputation_layout.py'
+      - 'tests/test_reputation_layout_integration.py'
       - 'tests/test_worker_container_receipts.py'
       - 'tests/test_container_receipts_integration.py'
       - 'tests/test_worker_container_boundary.py'
@@ -88,6 +89,22 @@ jobs:
           image_id="${image_id#sha256:}"
           sudo env SDLC_BOUNDARY_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_container_boundary_integration.py' -v
           sudo env SDLC_BOUNDARY_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_container_receipts_integration.py' -v
+
+  browser-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build reviewed browser validator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          sudo podman build -t localhost/reputation-validator:ci platform/validators/reputation-hub
+      - name: Require real browser positive, negative and isolation controls
+        run: |
+          image_id=$(sudo podman image inspect localhost/reputation-validator:ci --format '{{.Id}}')
+          image_id="${image_id#sha256:}"
+          sudo env SDLC_BROWSER_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_reputation_layout_integration.py' -v
 
   events-service:
     runs-on: ubuntu-latest
