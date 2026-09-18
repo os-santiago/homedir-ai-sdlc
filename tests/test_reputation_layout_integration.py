@@ -15,6 +15,10 @@ from test_worker_reputation_candidate import CandidateFixture, ROW
 from reputation_candidate_probe import probe_candidate
 from reputation_layout_probe import probe_qute_rows
 from durable_run_state import StateError
+from durable_run_state import digest
+from scoped_proposal_runner import generate_proposal
+from receipt_candidate import materialize_receipt
+from reputation_candidate_probe import CSS_PATH, SCOPE
 
 IMAGE = os.environ.get('SDLC_BROWSER_TEST_IMAGE')
 HTML = '''<!doctype html><html><body><main>
@@ -39,6 +43,19 @@ CSS = '''body { margin:16px; font:16px Arial; }
 
 @unittest.skipUnless(IMAGE, 'set SDLC_BROWSER_TEST_IMAGE to the reviewed immutable validator image')
 class CandidateQuteIntegrationTest(CandidateFixture):
+    def test_scoped_provider_fixture_reaches_real_qute_and_browser(self):
+        self.identity['requirement_hash'] = digest(b'fixture layout requirement')
+        content = json.dumps({'edits': [{'path': CSS_PATH, 'old': 'body{}', 'new': CSS, 'count': 1}]})
+        with self.open() as run:
+            result = generate_proposal(run, 'fixture layout requirement', {CSS_PATH: 'body{}'}, {},
+                                       lambda *_: {'outcome': 'proposal', 'content': content}, seconds=1)
+            self.assertEqual(result['observation'], 'proposal')
+            report = materialize_receipt(run, self.root / 'scratch', SCOPE)
+            evidence = probe_candidate(run, report, IMAGE)
+            self.assertTrue(evidence['result']['passed'], evidence)
+            self.assertEqual(run.data['version'], 4)
+            self.assertIsNone(run.data['checkpoint'])
+
     def test_receipt_to_candidate_to_qute_to_browser_retains_untrusted_state(self):
         with self.open() as run:
             report = self.candidate(run, CSS.encode())
