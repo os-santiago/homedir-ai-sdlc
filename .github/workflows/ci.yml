@@ -14,6 +14,9 @@ on:
       - 'platform/scripts/container_receipts.py'
       - 'platform/scripts/receipt_candidate.py'
       - 'tests/test_worker_receipt_candidate.py'
+      - 'platform/scripts/reputation_layout_probe.py'
+      - 'platform/validators/reputation-hub/**'
+      - 'tests/test_worker_reputation_layout.py'
       - 'tests/test_worker_container_receipts.py'
       - 'tests/test_container_receipts_integration.py'
       - 'tests/test_worker_container_boundary.py'
@@ -64,6 +67,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_worker_container_boundary.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_container_receipts.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_receipt_candidate.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_reputation_layout.py' -v
           python3 -m unittest discover -s tests -p 'test_deployment_preparation.py' -v
 
   container-boundary:
