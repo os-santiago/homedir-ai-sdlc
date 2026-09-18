@@ -7,10 +7,12 @@ import subprocess
 import sys
 import time
 import unittest
+from pathlib import Path
 
 from test_worker_container_receipts import LedgerFixture, frame
 from container_receipts import capture_container, recover_container_capture
 from durable_run_state import StateError
+from receipt_candidate import materialize_receipt
 
 IMAGE = os.environ.get("SDLC_BOUNDARY_TEST_IMAGE")
 
@@ -31,6 +33,10 @@ class ContainerReceiptIntegrationTest(LedgerFixture):
             self.assertEqual(run.data["status"], "untrusted")
             self.assertEqual(run.data["remaining"]["edit"], 25)
             self.assertIsNone(run.data["checkpoint"])
+            report = materialize_receipt(run, self.root / 'scratch', ['allowed.txt'])
+            self.assertEqual((Path(report['candidate']) / 'allowed.txt').read_bytes(), b'proposal')
+            self.assertEqual(report['acceptance'], 'not-run')
+            self.assertIsNone(run.data['checkpoint'])
         self.assertFalse((self.repo / "allowed.txt").exists())
 
     def test_timeout_and_invalid_output_preserve_complete_prefix(self):
@@ -83,6 +89,9 @@ with RunState(sys.argv[1], "run", sys.argv[2], json.loads(sys.argv[3]), edit_sec
                 self.assertEqual(receipt["observation"], "interrupted")
                 self.assertEqual(receipt["frames"], 1)
                 self.assertEqual(run.data["remaining"]["edit"], 25)
+                report = materialize_receipt(run, self.root / 'scratch', ['allowed.txt'])
+                self.assertEqual(report['observation'], 'interrupted')
+                self.assertEqual((Path(report['candidate']) / 'allowed.txt').read_bytes(), b'proposal')
         finally:
             if caller.poll() is None:
                 caller.kill()
