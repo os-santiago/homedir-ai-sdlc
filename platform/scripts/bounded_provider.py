@@ -1,5 +1,6 @@
 """One bounded non-streaming NVIDIA request; no agent tools or arbitrary endpoint."""
 
+import hashlib
 import json
 from pathlib import Path
 import signal
@@ -11,6 +12,30 @@ import urllib.request
 
 ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions'
 MAX_BYTES = 512 * 1024
+LIGHTNING = 'nvidia/nemotron-3.5-lightning-30b-a3b'
+DEEPSEEK = 'deepseek-ai/deepseek-v4-flash-0731'
+
+
+def completion_body(messages, model, profile='default'):
+    """Reviewed profiles only; model output cannot inject provider options."""
+    if profile not in {'default', 'lightning-json-v1', 'lightning-reasoned-json-v1', 'deepseek-low-json-v1'}:
+        raise ValueError('unknown inference profile')
+    body = {'model': model, 'messages': messages, 'stream': False,
+            'temperature': 0.2, 'max_tokens': 4096}
+    if profile.startswith('lightning-'):
+        if model != LIGHTNING:
+            raise ValueError('inference profile does not match model')
+        body.update(chat_template_kwargs={'enable_thinking': False},
+                    response_format={'type': 'json_object'})
+        if profile == 'lightning-reasoned-json-v1':
+            body['chat_template_kwargs']['enable_thinking'] = True
+            body['reasoning_budget'] = 1024
+    elif profile == 'deepseek-low-json-v1':
+        if model != DEEPSEEK:
+            raise ValueError('inference profile does not match model')
+        body.update(chat_template_kwargs={'thinking': True, 'reasoning_effort': 'low'},
+                    response_format={'type': 'json_object'})
+    return json.dumps(body, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -18,13 +43,15 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def request_proposal(messages, model, api_key, seconds=120):
+def request_proposal(messages, model, api_key, seconds=120, profile='default'):
     """Secret travels only over stdin to a trusted child and in the HTTPS header."""
     if type(seconds) is not int or not 1 <= seconds <= 120:
         raise ValueError('deadline must be 1..120 seconds')
     if not isinstance(model, str) or not model or not isinstance(api_key, str) or not api_key:
         raise ValueError('operator model and credential required')
-    payload = json.dumps({'messages': messages, 'model': model, 'key': api_key, 'seconds': seconds}).encode()
+    body = completion_body(messages, model, profile)
+    payload = json.dumps({'messages': messages, 'model': model, 'key': api_key,
+                          'seconds': seconds, 'profile': profile}).encode()
     if len(payload) > 160 * 1024:
         raise ValueError('request input limit exceeded')
     started = time.monotonic()
@@ -50,7 +77,8 @@ def request_proposal(messages, model, api_key, seconds=120):
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=2)
-    return dict(result, model=model, elapsed_seconds=round(time.monotonic() - started, 3))
+    return dict(result, model=model, profile=profile, payload_sha256=hashlib.sha256(body).hexdigest(),
+                elapsed_seconds=round(time.monotonic() - started, 3))
 
 
 def child_request(data):
@@ -59,8 +87,7 @@ def child_request(data):
         raise TimeoutError('request deadline')
     signal.signal(signal.SIGALRM, expired)
     signal.alarm(data['seconds'])
-    body = json.dumps({'model': data['model'], 'messages': data['messages'],
-                       'stream': False, 'temperature': 0.2, 'max_tokens': 4096}).encode()
+    body = completion_body(data['messages'], data['model'], data.get('profile', 'default'))
     request = urllib.request.Request(ENDPOINT, data=body, method='POST',
                                      headers={'Authorization': 'Bearer ' + data['key'], 'Content-Type': 'application/json'})
     # Ignore proxy environment/config and refuse bearer-token redirects.
@@ -78,7 +105,9 @@ def child_request(data):
         usage = {k: v for k, v in (parsed.get('usage') or {}).items()
                  if k in {'prompt_tokens', 'completion_tokens', 'total_tokens'} and type(v) is int and v >= 0}
         return {'outcome': 'proposal' if choice.get('finish_reason') == 'stop' else 'incomplete',
-                'content': content, 'usage': usage}
+                'content': content, 'usage': usage,
+                'finish_reason': choice.get('finish_reason') if choice.get('finish_reason') in
+                                 {'stop', 'length', 'tool_calls', 'content_filter'} else 'unknown'}
     except urllib.error.HTTPError as exc:
         exc.close()
         return {'outcome': 'capacity' if exc.code in {429, 503} else 'provider-error', 'http_status': exc.code}

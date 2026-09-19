@@ -6,7 +6,8 @@ from scoped_proposal import apply_operations, proposal_messages
 
 
 @locked
-def generate_proposal(run, requirement, files, context, provider, seconds=120, feedback=None):
+def generate_proposal(run, requirement, files, context, provider, seconds=120, feedback=None,
+                      context_format='json-v1'):
     """Reserve first, then record one complete response without approving it.
 
     The provider must enforce its own deadline and return only after cleanup.
@@ -22,21 +23,24 @@ def generate_proposal(run, requirement, files, context, provider, seconds=120, f
         original = run._git('show', run.identity['base_sha'] + ':' + path)
         if original != content.encode():
             raise StateError('proposal input must match immutable base')
-    messages = proposal_messages(requirement, context, feedback)
+    messages = proposal_messages(requirement, context, feedback, context_format)
     run.begin('edit', seconds + 5, 'scoped-proposal')
     result = provider(messages, seconds)
     # Keep provider evidence bounded and free of transport credentials/errors.
-    evidence = {'request_sha256': digest(encoded(messages)),
+    evidence = {'request_sha256': digest(encoded(messages)), 'context_format': context_format,
                 'input_sha256': {path: digest(text.encode()) for path, text in files.items()},
                 'provider': {key: result[key] for key in
-                             ('outcome', 'model', 'elapsed_seconds', 'usage', 'http_status', 'content') if key in result}}
+                             ('outcome', 'model', 'profile', 'payload_sha256', 'finish_reason',
+                              'elapsed_seconds', 'usage', 'http_status', 'content') if key in result}}
     entries, observation = [], 'failed'
     if result.get('outcome') == 'proposal':
         try:
             entries = apply_operations(result.get('content'), files)
             observation = 'proposal'
-        except ProtocolError:
+        except ProtocolError as exc:
             observation = 'rejected'
+            evidence['rejection'] = str(exc)
     run.finish_file_proposal(entries, observation, evidence)
     return {'observation': observation, 'receipt': run.data['last_proposal'],
-            'provider_outcome': result.get('outcome'), 'changed_paths': [e['path'] for e in entries]}
+            'provider_outcome': result.get('outcome'), 'changed_paths': [e['path'] for e in entries],
+            'rejection': evidence.get('rejection')}
