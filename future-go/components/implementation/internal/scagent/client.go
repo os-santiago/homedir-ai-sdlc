@@ -2,10 +2,13 @@ package scagent
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // Client wraps sc-agent-cli execution for code generation and quality review
@@ -25,9 +28,12 @@ func NewClient() *Client {
 }
 
 // GenerateCode executes code generation via sc-agent-cli
-func (c *Client) GenerateCode(prompt string) (string, error) {
-	cmd := exec.Command(c.BinaryPath, "-yq", prompt)
+func (c *Client) GenerateCode(ctx context.Context, prompt string) (string, error) {
+	cmd := exec.CommandContext(ctx, c.BinaryPath, "-yq", prompt)
+	configureCancellation(cmd)
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Env = append(os.Environ(),
+		"NO_COLOR=1", // Disable ANSI escape codes for clean JSON parsing
 		fmt.Sprintf("SC_MAX_ITERATIONS=%d", c.MaxIter),
 		fmt.Sprintf("SC_PROFILE=%s", c.Profile),
 	)
@@ -37,6 +43,9 @@ func (c *Client) GenerateCode(prompt string) (string, error) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	if err != nil {
 		return "", fmt.Errorf("sc-agent execution failed: %w\nStderr: %s", err, stderr.String())
 	}
@@ -46,13 +55,16 @@ func (c *Client) GenerateCode(prompt string) (string, error) {
 		return "", fmt.Errorf("sc-agent returned empty output")
 	}
 
+	// Strip ANSI escape codes (sc-agent-cli forces colors even with NO_COLOR=1)
+	output = stripANSI(output)
+
 	return output, nil
 }
 
 // ReviewCode executes quality review via sc-agent-cli
-func (c *Client) ReviewCode(code string) (string, error) {
+func (c *Client) ReviewCode(ctx context.Context, code string) (string, error) {
 	prompt := buildReviewPrompt(code)
-	return c.GenerateCode(prompt)
+	return c.GenerateCode(ctx, prompt)
 }
 
 // buildReviewPrompt creates quality assessment prompt
@@ -139,4 +151,13 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// stripANSI removes ANSI escape codes from string
+// sc-agent-cli forces colors (chalk.level = 2) even with NO_COLOR=1,
+// so we strip them post-processing to ensure clean JSON parsing
+func stripANSI(s string) string {
+	// Regex matches ANSI escape sequences: ESC[ ... m
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiRegex.ReplaceAllString(s, "")
 }

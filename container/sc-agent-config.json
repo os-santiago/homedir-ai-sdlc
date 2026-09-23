@@ -1,0 +1,21 @@
+{
+  "model": {
+    "provider": "openai-compatible",
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "model": "poolside/laguna-xs-2.1",
+    "temperature": 0.2,
+    "maxTokens": 4096,
+    "stream": false
+  },
+  "permissions": {
+    "autoApprove": ["read_file", "list_dir", "search_text", "web_fetch", "memory_read", "write_file", "edit_file", "run_shell", "git", "memory_write"],
+    "denyPaths": [".env", ".env.*", "**/*.key", "**/*.pem"]
+  },
+  "profiles": {
+    "nvidia": {
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "model": "poolside/laguna-xs-2.1"
+    }
+  },
+  "activeProfile": "nvidia"
+}

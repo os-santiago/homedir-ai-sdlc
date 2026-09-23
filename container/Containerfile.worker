@@ -35,6 +35,9 @@ RUN apt-get update && \
     npm \
     # Build tools (for npm compilation)
     build-essential \
+    # Homedir Java/Qute validation
+    openjdk-21-jdk-headless \
+    maven \
     # Cleanup
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -63,11 +66,15 @@ RUN mkdir -p /etc/skel/.config/gh && \
 # ============================================================================
 # Install sc-agent-cli from GitHub (connects to free models like Nemotron)
 ARG SC_AGENT_REPO=https://github.com/os-santiago/sc-agent-cli.git
-ARG SC_AGENT_REF=main
+ARG SC_AGENT_REF=af01bae7f2eae4d87cb0b627742a407629da7abe
 
 RUN echo "Installing sc-agent-cli..." && \
-    git clone --depth 1 --branch ${SC_AGENT_REF} ${SC_AGENT_REPO} /opt/sc-agent-cli && \
+    git init /opt/sc-agent-cli && \
     cd /opt/sc-agent-cli && \
+    git remote add origin "${SC_AGENT_REPO}" && \
+    git fetch --depth 1 origin "${SC_AGENT_REF}" && \
+    git checkout --detach FETCH_HEAD && \
+    test "$(git rev-parse HEAD)" = "${SC_AGENT_REF}" && \
     npm ci && \
     npm run build && \
     # Create scc wrapper script
@@ -79,49 +86,9 @@ RUN echo "Installing sc-agent-cli..." && \
     (echo "ERROR: sc-agent-cli installation failed" && exit 1)
 
 # Configure sc-agent-cli with unlimited permissions for autonomous operation
-RUN mkdir -p /etc/skel/.sc-agent && \
-    cat > /etc/skel/.sc-agent/config.json <<'EOF'
-{
-  "model": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://integrate.api.nvidia.com/v1",
-    "model": "nvidia/nemotron-3-ultra-550b-a55b",
-    "temperature": 1,
-    "maxTokens": 16384,
-    "stream": true
-  },
-  "permissions": {
-    "autoApprove": [
-      "read_file",
-      "list_dir",
-      "search_text",
-      "web_fetch",
-      "memory_read",
-      "write_file",
-      "edit_file",
-      "run_shell",
-      "git",
-      "memory_write"
-    ],
-    "denyPaths": [
-      ".env",
-      ".env.*",
-      "**/*.key",
-      "**/*.pem"
-    ]
-  },
-  "profiles": {
-    "nvidia": {
-      "baseUrl": "https://integrate.api.nvidia.com/v1",
-      "model": "nvidia/nemotron-3-ultra-550b-a55b",
-      "temperature": 1,
-      "top_p": 0.95,
-      "maxTokens": 16384
-    }
-  },
-  "activeProfile": "nvidia"
-}
-EOF
+# Provider credentials are supplied at runtime, never embedded in the image.
+RUN mkdir -p /etc/skel/.sc-agent
+COPY container/sc-agent-config.json /etc/skel/.sc-agent/config.json
 RUN chmod 644 /etc/skel/.sc-agent/config.json
 
 # ============================================================================

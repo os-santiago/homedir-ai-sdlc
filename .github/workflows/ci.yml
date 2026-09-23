@@ -6,6 +6,39 @@ on:
     branches: [main]
     paths:
       - 'events-service/**'
+      - 'future-go/components/implementation/**'
+      - 'platform/scripts/homedir-sdlc-worker.sh'
+      - 'platform/scripts/durable_run_state.py'
+      - 'platform/scripts/durable_step_runner.py'
+      - 'platform/scripts/container_boundary.py'
+      - 'platform/scripts/container_receipts.py'
+      - 'platform/scripts/receipt_candidate.py'
+      - 'platform/scripts/scoped_proposal.py'
+      - 'platform/scripts/targeted_proposal.py'
+      - 'platform/scripts/reputation_edit_plan.py'
+      - 'tests/test_worker_targeted_proposal.py'
+      - 'platform/scripts/scoped_proposal_runner.py'
+      - 'platform/scripts/bounded_provider.py'
+      - 'tests/test_worker_scoped_proposal.py'
+      - 'tests/test_worker_receipt_candidate.py'
+      - 'platform/scripts/reputation_layout_probe.py'
+      - 'platform/scripts/reputation_candidate_probe.py'
+      - 'tests/test_worker_reputation_candidate.py'
+      - 'platform/validators/reputation-hub/**'
+      - 'tests/test_worker_reputation_layout.py'
+      - 'tests/test_reputation_layout_integration.py'
+      - 'tests/test_worker_container_receipts.py'
+      - 'tests/test_container_receipts_integration.py'
+      - 'tests/test_worker_container_boundary.py'
+      - 'tests/test_container_boundary_integration.py'
+      - 'tests/test_worker_durable_runner.py'
+      - 'tests/test_worker_durable_state.py'
+      - 'tests/test_worker_exit_codes.py'
+      - 'tests/test_worker_budget.py'
+      - 'tests/test_worker_publication.py'
+      - 'tests/test_worker_notifications.py'
+      - 'tests/test_deployment_preparation.py'
+      - '.github/workflows/deploy-production.yml'
       - '.github/workflows/ci.yml'
 
 permissions:
@@ -16,6 +49,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  implementation-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: future-go/components/implementation/go.mod
+          cache: false
+      - name: Test implementation cancellation and quality
+        working-directory: future-go/components/implementation
+        run: go test -race ./...
+
+  worker-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check worker syntax and exit handling
+        run: |
+          bash -n platform/scripts/homedir-sdlc-worker.sh
+          python3 -m unittest discover -s tests -p 'test_worker_exit_codes.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_budget.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_publication.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_notifications.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_durable_state.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_durable_runner.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_container_boundary.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_container_receipts.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_receipt_candidate.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_scoped_proposal.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_targeted_proposal.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_reputation_layout.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_reputation_candidate.py' -v
+          python3 -m unittest discover -s tests -p 'test_deployment_preparation.py' -v
+
+  container-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install local qualification runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      - name: Qualify restricted container profile
+        env:
+          FIXTURE_IMAGE: docker.io/library/python@sha256:78e98729f8fc4099e53cffb3fe59fd15b18dfa4ace8c914dee0cefa5320068eb
+        run: |
+          sudo podman pull "${FIXTURE_IMAGE}"
+          image_id=$(sudo podman image inspect "${FIXTURE_IMAGE}" --format '{{.Id}}')
+          image_id="${image_id#sha256:}"
+          sudo env SDLC_BOUNDARY_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_container_boundary_integration.py' -v
+          sudo env SDLC_BOUNDARY_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_container_receipts_integration.py' -v
+
+  browser-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build reviewed browser validator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          sudo podman build -t localhost/reputation-validator:ci platform/validators/reputation-hub
+      - name: Require real browser positive, negative and isolation controls
+        run: |
+          image_id=$(sudo podman image inspect localhost/reputation-validator:ci --format '{{.Id}}')
+          image_id="${image_id#sha256:}"
+          sudo env SDLC_BROWSER_TEST_IMAGE="sha256:${image_id}" python3 -m unittest discover -s tests -p 'test_reputation_layout_integration.py' -v
+
   events-service:
     runs-on: ubuntu-latest
     steps:

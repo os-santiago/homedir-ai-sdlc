@@ -72,7 +72,7 @@ podman images | grep homedir-ai-sdlc
 export GH_TOKEN=$(gh auth token)
 
 # SCC API key (desde config)
-export SC_API_KEY="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"
+export SC_API_KEY="${NVIDIA_API_KEY}"
 ```
 
 ### **Ejecutar Worker (One-shot)**

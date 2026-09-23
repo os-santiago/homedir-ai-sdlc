@@ -13,8 +13,9 @@ AI-SDLC automatiza el flujo completo de desarrollo:
 - **Auto-Merge:** Mergea cuando CI pasa
 - **Deployment:** Verifica deployment en producción
 
-**Autonomía actual:** 99%  
-**Tiempo E2E:** 16-20 minutos (issue → merged → deployed)
+**Estado verificado (2026-09-15):** los pilotos recientes no completaron la entrega hasta producción. Los diagramas siguientes describen el flujo previsto, no una garantía de autonomía o disponibilidad.
+
+La [ADR 0003](adr/0003-bounded-evidence-based-delivery.md) propone una transición incremental hacia ejecución acotada, recuperación y validación independiente, conservando las reglas de revisión del repositorio.
 
 ---
 
@@ -116,13 +117,9 @@ flowchart LR
     style Manual fill:#FF9800
 ```
 
-**Typical Timeline:**
-- 00:00 - Issue created
-- 00:03 - Admitted
-- 00:06 - Implementation complete
-- 00:15 - PR created
-- 00:19 - CI passed
-- 00:20 - Merged & Deployed
+**Timing:** no current end-to-end duration is established. Measure active work,
+provider/CI/review waiting and production observation separately. Completion
+requires production evidence, not only a merged PR.
 
 ---
 
