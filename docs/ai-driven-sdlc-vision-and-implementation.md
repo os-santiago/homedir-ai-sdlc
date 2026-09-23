@@ -350,7 +350,7 @@ bash: line 1: gh: command not found
 **Root Causes**:
 1. **Granite model does not exist**: `ibm/granite-3-2-8b-instruct-cpu` not in NVIDIA catalog
    - Available: `ibm/granite-3.0-8b-instruct`, `ibm/granite-3.0-3b-a800m-instruct`
-2. **API key mismatch**: RHOAI expects `sk-*` format but receives NVIDIA `nvapi-*`
+2. **API key mismatch**: RHOAI expects `sk-*` format but receives NVIDIA `${NVIDIA_API_KEY}*`
 3. **Profile/environment inconsistency**: Worker uses `SCC_PROFILE` but env sets `HOMEDIR_SDLC_SCC_PROFILE`
 
 **Evidence**:

@@ -162,7 +162,7 @@ sudo -u homedir-sdlc gh auth login
 Option 2 - Using environment variable:
 ```bash
 # Add to /home/homedir-sdlc/.config/homedir-sdlc/env
-export GH_TOKEN=ghp_your_token_here
+export GH_TOKEN=${GH_TOKEN}
 ```
 
 ### State Directory Permission Issues

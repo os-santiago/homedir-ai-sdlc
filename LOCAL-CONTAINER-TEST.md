@@ -37,7 +37,7 @@ wsl -d fedoraremix bash -c "
   # Ejecutar worker
   podman run --rm \
     -e GH_TOKEN=\$(gh auth token) \
-    -e SC_API_KEY='nvapi-...' \
+    -e SC_API_KEY='${NVIDIA_API_KEY}' \
     -e HOMEDIR_SDLC_REPO=os-santiago/homedir \
     -e HOMEDIR_SDLC_MAX_ISSUES_PER_RUN=1 \
     -v /tmp/ai-sdlc-test/state:/var/lib/homedir-sdlc \
