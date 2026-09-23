@@ -124,7 +124,7 @@ API key: configured ✅
 ### Environment Variables
 ```bash
 SC_PROVIDER=nvidia
-SC_API_KEY=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
+SC_API_KEY=${NVIDIA_API_KEY}
 SC_MAX_ITERATIONS=10
 HOMEDIR_SDLC_SCC_PROFILE=nvidia
 HOMEDIR_SDLC_SCC_PERMISSIONS=unlimited

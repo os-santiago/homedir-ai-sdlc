@@ -215,12 +215,13 @@ jobs:
           IMPLEMENTATION_BUILD_SUCCESS: ${{ needs.build-implementation.result == 'success' }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          envs: GITHUB_SHA,WORKER_BUILD_SUCCESS,DASHBOARD_BUILD_SUCCESS,IMPLEMENTATION_BUILD_SUCCESS,GH_TOKEN,NVIDIA_API_KEY
+          envs: GITHUB_SHA,WORKER_BUILD_SUCCESS,DASHBOARD_BUILD_SUCCESS,IMPLEMENTATION_BUILD_SUCCESS,GH_TOKEN,NVIDIA_API_KEY,LITELLM_API_KEY
           script: |
             set -e
 
@@ -235,6 +236,7 @@ jobs:
             # Validate runtime secrets before changing the running deployment.
             : "${GH_TOKEN:?GH_TOKEN is required}"
             : "${NVIDIA_API_KEY:?NVIDIA_API_KEY is required}"
+            : "${LITELLM_API_KEY:?LITELLM_API_KEY is required}"
             # Prepare every replacement before modifying the running deployment.
             # A failed pull exits under set -e and leaves the existing pod intact.
             for component in worker dashboard implementation; do
@@ -348,6 +350,7 @@ jobs:
                 --name ai-sdlc-implementation \
                 --restart unless-stopped \
                 -e PORT=8082 \
+                -e LITELLM_API_KEY \
                 -e SC_PROFILE=litellm \
                 -e SC_AGENT_PATH=/usr/local/bin/scc \
                 -e MAX_IMPLEMENTATION_ITERATIONS=3 \

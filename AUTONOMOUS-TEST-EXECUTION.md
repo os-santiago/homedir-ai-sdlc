@@ -29,7 +29,7 @@ https://github.com/os-santiago/homedir-ai-sdlc/settings/secrets/actions
 Click en **"New repository secret"**
 
 **Name**: `SC_API_KEY`  
-**Value**: `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`
+**Value**: `${NVIDIA_API_KEY}`
 
 (Este es el API key de NVIDIA que está en tu `~/.sc-agent/config.json`)
 

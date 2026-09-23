@@ -197,7 +197,7 @@ db3c019 docs: add E2E test with real production bug
    https://github.com/os-santiago/homedir-ai-sdlc/settings/secrets/actions
    
    Name: SC_API_KEY
-   Value: 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
+   Value: ${NVIDIA_API_KEY}
    ```
 
 2. **Ejecutar workflow**

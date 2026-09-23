@@ -136,8 +136,8 @@ dashboard:
 ```bash
 kubectl create secret generic ai-sdlc-secrets \
   --namespace homedir-ai-sdlc \
-  --from-literal=gh-token=ghp_xxxx \
-  --from-literal=nvidia-api-key=nvapi-xxxx
+  --from-literal=gh-token=${GH_TOKEN} \
+  --from-literal=nvidia-api-key=${NVIDIA_API_KEY}
 ```
 
 **Option 2: External Secrets Operator (Recommended)**
@@ -166,7 +166,7 @@ spec:
 # Create sealed secret
 kubectl create secret generic ai-sdlc-secrets \
   --dry-run=client \
-  --from-literal=gh-token=ghp_xxxx \
+  --from-literal=gh-token=${GH_TOKEN} \
   -o yaml | \
   kubeseal -o yaml > sealed-secret.yaml
 
