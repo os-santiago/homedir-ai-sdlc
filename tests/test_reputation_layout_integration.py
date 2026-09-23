@@ -43,6 +43,20 @@ CSS = '''body { margin:16px; font:16px Arial; }
 
 @unittest.skipUnless(IMAGE, 'set SDLC_BROWSER_TEST_IMAGE to the reviewed immutable validator image')
 class CandidateQuteIntegrationTest(CandidateFixture):
+    def test_approved_target_proposal_reaches_real_qute_and_browser(self):
+        self.identity['requirement_hash'] = digest(b'fixture layout requirement')
+        targets = [{'id':'layout', 'path':CSS_PATH, 'old':'body{}', 'count':1,
+                    'intent':'Constrain the fixture row layout.'}]
+        content = json.dumps({'replacements':[{'id':'layout', 'text':CSS}]})
+        with self.open() as run:
+            result = generate_proposal(run,'fixture layout requirement',{CSS_PATH:'body{}'}, {},
+                                       lambda *_:{'outcome':'proposal','content':content},seconds=1,targets=targets)
+            self.assertEqual(result['observation'],'proposal')
+            report = materialize_receipt(run,self.root/'scratch',SCOPE)
+            evidence = probe_candidate(run,report,IMAGE)
+            self.assertTrue(evidence['result']['passed'],evidence)
+            self.assertIsNone(run.data['checkpoint'])
+
     def test_scoped_provider_fixture_reaches_real_qute_and_browser(self):
         self.identity['requirement_hash'] = digest(b'fixture layout requirement')
         content = json.dumps({'edits': [{'path': CSS_PATH, 'old': 'body{}', 'new': CSS, 'count': 1}]})
