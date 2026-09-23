@@ -70,13 +70,7 @@ Para cada secret:
 
 **Ejemplo de private key format:**
 ```
------BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-...
-(muchas líneas más)
-...
-AAAAFnNjYW5hbGVzQHNjYW5hbGVzLXAxNnYBAgME
------END OPENSSH PRIVATE KEY-----
+[Private key omitted: supply the complete value through the secret manager.]
 ```
 
 ---

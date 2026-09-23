@@ -1,0 +1,10 @@
+title = "AI-SDLC secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nvidia-api-token"
+description = "NVIDIA credential, including accidentally published prefixes"
+regex = '''nvapi-[A-Za-z0-9_-]{8,}'''
+keywords = ["nvapi-"]

@@ -88,7 +88,7 @@ sc-agent-cli se ejecuta pero no genera cambios en archivos. Posibles causas:
 ### Environment Variables en Worker
 ```bash
 SC_MAX_ITERATIONS=10
-SC_API_KEY=nvapi-REDACTED
+SC_API_KEY=${NVIDIA_API_KEY}
 HOMEDIR_SDLC_SCC_PROFILE=nvidia
 ```
 

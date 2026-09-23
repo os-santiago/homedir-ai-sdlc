@@ -28,10 +28,7 @@ cat ~/.ssh/homedir_sdlc_deploy
 
 Copiar TODO el contenido (incluye header y footer):
 ```
------BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5...
-...
------END OPENSSH PRIVATE KEY-----
+[Private key omitted: supply the complete value through the secret manager.]
 ```
 
 Pegar en GitHub Secret `VPS_SSH_KEY`.
