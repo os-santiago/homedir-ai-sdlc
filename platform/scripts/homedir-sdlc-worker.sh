@@ -362,6 +362,87 @@ require_cmd() {
   fi
 }
 
+# ============================================================================
+# Repository Implementation
+# ============================================================================
+# Execute against the worker-owned checkout with verifiable repository evidence.
+
+
+
+remaining_implementation_seconds() {
+  local remaining=$((IMPLEMENTATION_DEADLINE - SECONDS))
+  if (( remaining <= 0 )); then
+    return 124
+  fi
+  printf '%s\n' "${remaining}"
+}
+
+run_initial_implementation() {
+  local number="$1" body="$2" prompt="$3"
+  local budget base_sha expected_branch changed_files validation_cmd rc remaining
+  base_sha=$(git -C "${WORKDIR}" rev-parse HEAD) || return 1
+  expected_branch=$(git -C "${WORKDIR}" branch --show-current) || return 1
+  if [[ -z "${expected_branch}" || "${expected_branch}" == main ]]; then
+    log "Refusing implementation outside a prepared PR branch"
+    return 1
+  fi
+  if [[ -n "$(git -C "${WORKDIR}" status --porcelain)" ]]; then
+    log "Refusing implementation with an unclean baseline"
+    return 1
+  fi
+  budget=$(get_timeout_for_complexity "$(classify_issue_complexity "${body}")")
+  if [[ "${SCC_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] && (( SCC_TIMEOUT_SECONDS < budget )); then
+    budget=${SCC_TIMEOUT_SECONDS}
+  fi
+  local IMPLEMENTATION_DEADLINE=$((SECONDS + budget))
+  prompt="${prompt}
+
+Repository execution contract:
+- Work in the current checkout and read its AGENTS.md and applicable instructions.
+- Base SHA: ${base_sha}; required branch: ${expected_branch}.
+- Inspect relevant files and implement actual repository changes; prose is not a result.
+- Do not commit, switch branches, rewrite the base history, push, merge, or deploy.
+- Run relevant tests and report changed files and validation evidence."
+  # The worker owns the checkout. The HTTP generator has no repository mutation
+  # contract and must not be used as an implementation route.
+  if run_scc_checked "${prompt}" "${body}"; then
+    :
+  else
+    rc=$?
+    return "${rc}"
+  fi
+  if [[ "$(git -C "${WORKDIR}" branch --show-current)" != "${expected_branch}" ]] \
+    || ! git -C "${WORKDIR}" merge-base --is-ancestor "${base_sha}" HEAD; then
+    log "Implementation changed its branch or base history; refusing the result"
+    return 1
+  fi
+  changed_files=$(git -C "${WORKDIR}" diff --name-only "${base_sha}" && git -C "${WORKDIR}" ls-files --others --exclude-standard) || return 1
+  if [[ -z "${changed_files}" ]]; then
+    log "Implementation produced no repository diff; refusing textual/no-op result"
+    return 1
+  fi
+  git -C "${WORKDIR}" diff --check "${base_sha}" || return 1
+  log "Implementation evidence: issue=${number} base=${base_sha} branch=${expected_branch} changed_files=${changed_files}"
+  validation_cmd=$(get_validation_command_for_changes "${changed_files}")
+  if [[ -n "${validation_cmd}" ]]; then
+    log "Running scoped validation: ${validation_cmd}"
+    remaining=$(remaining_implementation_seconds) || return 124
+    if (cd "${WORKDIR}" && timeout --kill-after=10s "${remaining}s" bash -c "${validation_cmd}"); then
+      log "Scoped validation passed for base ${base_sha}"
+    else
+      rc=$?
+      if [[ "${rc}" == 124 || "${rc}" == 137 ]]; then
+        log "Scoped validation exhausted the implementation deadline"
+        return 124
+      fi
+      log "Scoped validation failed for base ${base_sha}"
+      return 1
+    fi
+  else
+    log "No scoped validation configured; CI remains required for base ${base_sha}"
+  fi
+}
+
 run_scc_prompt() {
   local prompt="$1"
   local issue_body="$2"
@@ -377,6 +458,9 @@ run_scc_prompt() {
   fi
 
   # Export timeout for error reporting (used by run_scc_handle_exit_code)
+  if [[ -n "${IMPLEMENTATION_DEADLINE:-}" ]]; then
+    dynamic_timeout=$(remaining_implementation_seconds) || return 124
+  fi
   export SCC_ACTUAL_TIMEOUT="${dynamic_timeout}"
 
   (
@@ -397,7 +481,7 @@ run_scc_prompt() {
     scc_args+=(-yq "${prompt}")
 
     if command -v timeout >/dev/null 2>&1 && [[ "${dynamic_timeout}" =~ ^[0-9]+$ && "${dynamic_timeout}" -gt 0 ]]; then
-      timeout "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}"
+      timeout --kill-after=10s "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}"
     else
       log "WARNING: 'timeout' unavailable or dynamic_timeout invalid (${dynamic_timeout}); running SCC without timeout enforcement"
       "${SCC_BIN}" "${scc_args[@]}"
@@ -424,8 +508,9 @@ run_scc_with_timeout_handling() {
   local scc_rc
   if run_scc_prompt "${prompt}" "${issue_body}"; then
     return 0
+  else
+    scc_rc=$?
   fi
-  scc_rc=$?
   run_scc_handle_exit_code "${scc_rc}" "remediation"
   return "${scc_rc}"
 }
@@ -538,7 +623,22 @@ remove_terminal_labels() {
 comment_issue() {
   local issue="$1"
   local body="$2"
-  gh issue comment "${issue}" --repo "${REPO}" --body "${body}" >/dev/null
+  local cache_dir="${STATE_DIR}/comment-notifications" digest previous=""
+  digest=$(printf '%s' "${body}" | sha256sum | cut -d ' ' -f 1) || return 0
+  if [[ -f "${cache_dir}/${issue}" ]]; then
+    previous=$(<"${cache_dir}/${issue}")
+  fi
+  if [[ "${previous}" == "${digest}" ]]; then
+    return 0
+  fi
+  if gh issue comment "${issue}" --repo "${REPO}" --body "${body}" >/dev/null; then
+    if ! (mkdir -p "${cache_dir}" && printf '%s\n' "${digest}" > "${cache_dir}/${issue}"); then
+      log "WARN: could not cache successful notification for issue #${issue}"
+    fi
+  else
+    log "WARN: notification failed for issue #${issue}; continuing worker cycle"
+  fi
+  return 0
 }
 
 log_autonomous_decision() {
@@ -2049,7 +2149,7 @@ run_scc_on_existing_pr() {
   fi
 
   git -C "${WORKDIR}" add -A
-  git -C "${WORKDIR}" commit -m "fix(sdlc): remediate issue #${issue} PR checks" -m "PR #${pr_number}"
+  git -C "${WORKDIR}" commit -s -m "fix(sdlc): remediate issue #${issue} PR checks" -m "PR #${pr_number}"
 
   validation_summary="Worker validation command not configured; GitHub checks are required before approval."
   if [[ -n "${VALIDATION_COMMAND}" ]]; then
@@ -2599,6 +2699,65 @@ run_event_command() {
   esac
 }
 
+create_implementation_pr() {
+  local number="$1" title="$2" branch="$3" validation_summary="$4"
+  local risk_label
+  risk_label=$(publication_risk_label) || return 1
+  gh pr create \
+      --repo "${REPO}" \
+      --base main \
+      --head "${branch}" \
+      --label "${risk_label}" \
+      --title "chore(sdlc): implement issue #${number}" \
+      --body "$(cat <<PRBODY
+## Summary
+
+Autonomous SCC implementation for issue #${number}: ${title}
+
+## Validation
+
+${validation_summary}
+
+## Issue Coverage
+
+- [ ] Map concrete code changes to issue #${number}: ${title}
+- [ ] Map each acceptance criterion, or explain why none applies.
+- [ ] List any known uncovered requirement, or state that none is known with evidence.
+
+## Governance
+
+- Branch protection, required checks, required reviews, and repository rules still apply.
+- No admin bypass was used.
+
+Closes #${number}
+PRBODY
+)"
+}
+
+publication_risk_label() {
+  local files
+  files=$(git -C "${WORKDIR}" diff --name-only origin/main...HEAD) || return 1
+  if [[ -z "${files}" ]]; then
+    return 1
+  fi
+  # Escalate sensitive paths; reviewers must confirm or raise the risk level.
+  if grep -Eiq '(auth|crypt|password|secret|token|payment|billing)' <<<"${files}"; then
+    echo 'pr:risk-critical'
+  elif grep -Eq '(^\.github/|^platform/|^container/|^infra/|application\.properties$)' <<<"${files}"; then
+    echo 'pr:risk-high'
+  elif ! grep -Evq '\.(md|txt)$' <<<"${files}"; then
+    echo 'pr:risk-low'
+  else
+    echo 'pr:risk-medium'
+  fi
+}
+
+valid_policy_decision() {
+  jq -e -s 'length == 1 and (.[0] | type == "object" and
+    (.policy | type == "string" and length > 0) and
+    (.decision | type == "string" and length > 0))' >/dev/null 2>&1
+}
+
 run_issue() {
   local issue_json="$1"
   local number title labels body url branch slug prompt pr_url pr_number validation_summary existing_pr_json existing_pr_number existing_pr_url
@@ -2662,7 +2821,7 @@ CRITICAL INSTRUCTIONS FOR BATCH MODE:
 - DO NOT just describe what to do - EXECUTE the changes immediately
 - Read relevant files first with Read tool, then modify them with Edit/Write
 - Ensure all acceptance criteria are met with real code changes
-- Work is complete only when files are modified and changes are committed
+- Work is complete only when files are modified and validated; the worker owns commits.
 
 Issue title:
 ${title}
@@ -2697,7 +2856,7 @@ EOF
   if declare -f get_policy_decision >/dev/null 2>&1; then
     policy_decision=$(get_policy_decision "${number}" "${title}" "${body}" 2>/dev/null || echo "null")
 
-    if [[ "$policy_decision" != "null" ]] && [[ -n "$policy_decision" ]]; then
+    if valid_policy_decision <<<"${policy_decision}"; then
       local policy_category
       policy_category=$(echo "$policy_decision" | jq -r '.category' 2>/dev/null || echo "")
 
@@ -2832,13 +2991,18 @@ Begin implementation now. Use tools, do not narrate.
 EOF
 )"
 
-  log "running SCC for issue #${number}"
-  write_heartbeat "running" "SCC running for issue #${number}"
+  log "generating code for issue #${number}"
+  write_heartbeat "running" "Code generation for issue #${number}"
   local scc_rc
-  if run_scc_checked "${prompt}" "${body}"; then
-    :
+  if run_initial_implementation "${number}" "${body}" "${prompt}"; then
+    scc_rc=0
   else
     scc_rc=$?
+  fi
+
+  if [[ $scc_rc -eq 0 ]]; then
+    :
+  else
     log "SCC failed for issue #${number}"
     if [[ "${scc_rc}" -eq 124 ]]; then
       local issue_complexity
@@ -2858,27 +3022,9 @@ EOF
   fi
 
   if [[ -n "$(git -C "${WORKDIR}" status --porcelain)" ]]; then
-    # ADEV Rule #11: Run narrowest validation before commit
-    local changed_files
-    changed_files=$( (git -C "${WORKDIR}" diff --name-only HEAD && git -C "${WORKDIR}" ls-files --others --exclude-standard) 2>/dev/null || echo "")
-    local scoped_validation_cmd
-    scoped_validation_cmd=$(get_validation_command_for_changes "$changed_files")
-
-    if [[ -n "${scoped_validation_cmd}" ]]; then
-      log "Running scoped validation: ${scoped_validation_cmd}"
-      if (cd "${WORKDIR}" && bash -c "${scoped_validation_cmd}"); then
-        log "Scoped validation passed"
-      else
-        mark_failed "${number}" "Scoped validation failed: ${scoped_validation_cmd}"
-        return 0
-      fi
-    else
-      log "No scoped validation defined for changed files; relying on CI"
-    fi
-
     log "committing SCC changes for issue #${number}"
     git -C "${WORKDIR}" add -A
-    git -C "${WORKDIR}" commit -m "chore(sdlc): implement issue #${number}" -m "Refs #${number}"
+    git -C "${WORKDIR}" commit -s -m "chore(sdlc): implement issue #${number}" -m "Refs #${number}"
   fi
 
   if [[ -z "$(git -C "${WORKDIR}" log --oneline "origin/main..HEAD")" ]]; then
@@ -2910,34 +3056,7 @@ Recommendation: Review the issue description for clarity, check SCC logs, or ver
 
   pr_url="$(gh pr view "${branch}" --repo "${REPO}" --template '{{.url}}' 2>/dev/null || true)"
   if [[ -z "${pr_url}" ]]; then
-    if ! pr_url="$(gh pr create \
-      --repo "${REPO}" \
-      --base main \
-      --head "${branch}" \
-      --title "chore(sdlc): implement issue #${number}" \
-      --body "$(cat <<PRBODY
-## Summary
-
-Autonomous SCC implementation for issue #${number}: ${title}
-
-## Validation
-
-${validation_summary}
-
-## Issue Coverage
-
-- [ ] Map concrete code changes to issue #${number}: ${title}
-- [ ] Map each acceptance criterion, or explain why none applies.
-- [ ] List any known uncovered requirement, or state that none is known with evidence.
-
-## Governance
-
-- Branch protection, required checks, required reviews, and repository rules still apply.
-- No admin bypass was used.
-
-Refs #${number}
-PRBODY
-)" 2>/dev/null)"; then
+    if ! pr_url="$(create_implementation_pr "${number}" "${title}" "${branch}" "${validation_summary}" 2>/dev/null)"; then
       mark_failed "${number}" "GitHub PR creation failed for branch ${branch}."
       return 0
     fi

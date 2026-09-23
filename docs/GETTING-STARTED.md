@@ -286,7 +286,7 @@ gh issue create \
 ```bash
 curl -X POST \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer ${GH_TOKEN}" \
   https://api.github.com/repos/os-santiago/homedir/issues \
   -d '{
     "title": "Add email validation to contact form",

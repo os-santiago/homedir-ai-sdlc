@@ -133,7 +133,7 @@ HOMEDIR_SDLC_SCC_CLEAR_HISTORY=true
 HOMEDIR_SDLC_SCC_PERMISSIONS=unlimited
 
 # GitHub Token (REQUIRED - set your token here)
-GH_TOKEN=ghp_YOUR_TOKEN_HERE
+GH_TOKEN=${GH_TOKEN}
 
 # Alerts (optional)
 HOMEDIR_SDLC_ALERTS_ENABLED=false
@@ -216,7 +216,7 @@ Usar el playbook incluido:
 ```bash
 cd ansible
 ansible-playbook -i inventory.yml playbooks/sdlc-runner.yml \
-  -e "gh_token=ghp_YOUR_TOKEN" \
+  -e "gh_token=${GH_TOKEN}" \
   -e "target_repo=os-santiago/homedir"
 ```
 

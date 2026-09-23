@@ -220,7 +220,7 @@ cat /etc/homedir-sdlc/worker.env | grep SC_API_KEY
 **Variables críticas para Nemotron:**
 ```
 SC_PROVIDER=nvidia
-SC_API_KEY=nvapi-xxxxx (NVIDIA API key)
+SC_API_KEY=${NVIDIA_API_KEY} (NVIDIA API key)
 HOMEDIR_SDLC_SCC_PROFILE=nvidia
 ```
 

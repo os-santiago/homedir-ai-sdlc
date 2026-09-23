@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/playwright@sha256:bc6ab0d6d44ff4826e4cb8c1e6d801e185bfc42bb0753f8e2a30efc70db054c7
+WORKDIR /opt/validator
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --omit=dev && npm cache clean --force
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jdk-headless maven && rm -rf /var/lib/apt/lists/*
+COPY pom.xml RenderRows.java ./
+RUN mvn -B org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy-dependencies -DoutputDirectory=/opt/validator/qute \
+    && javac -cp '/opt/validator/qute/*' -d /opt/validator/qute RenderRows.java
+COPY check.cjs ./
+USER 10000:10000
+ENTRYPOINT ["node", "/opt/validator/check.cjs"]
