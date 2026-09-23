@@ -14,6 +14,9 @@ on:
       - 'platform/scripts/container_receipts.py'
       - 'platform/scripts/receipt_candidate.py'
       - 'platform/scripts/scoped_proposal.py'
+      - 'platform/scripts/targeted_proposal.py'
+      - 'platform/scripts/reputation_edit_plan.py'
+      - 'tests/test_worker_targeted_proposal.py'
       - 'platform/scripts/scoped_proposal_runner.py'
       - 'platform/scripts/bounded_provider.py'
       - 'tests/test_worker_scoped_proposal.py'
@@ -75,6 +78,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_worker_container_receipts.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_receipt_candidate.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_scoped_proposal.py' -v
+          python3 -m unittest discover -s tests -p 'test_worker_targeted_proposal.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_reputation_layout.py' -v
           python3 -m unittest discover -s tests -p 'test_worker_reputation_candidate.py' -v
           python3 -m unittest discover -s tests -p 'test_deployment_preparation.py' -v
