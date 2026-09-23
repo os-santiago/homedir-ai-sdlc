@@ -79,3 +79,21 @@ validation and publication, and demonstrate reviewed delivery through deployment
 Parent #75 remains open. The practical outcome of this pilot is a reviewable
 supervised product fix plus a more reliable proposal protocol, not completed
 end-to-end autonomy.
+
+The supervised product fix is submitted separately as
+[Homedir #1571](https://github.com/os-santiago/homedir/pull/1571). Its eight
+`ReputationHubResourceTest` tests passed in a complete Java 21 application startup,
+including escaped full-name titles and fallback rendering. This is a separate
+application validation gate, not promotion of the shadow run's checkpoint.
+
+## Operational verification
+
+The September 23 post-merge check confirmed worker/dashboard/implementation images
+at merged #95 (`d30edf42f0578f9b63baa624b4e5930af5371266`). It also found the public
+dashboard returning 502 while its local `/sdlc/dashboard` and `/q/health/live`
+returned 200. Nginx referenced an obsolete container IP (`10.88.3.19:8080`) and
+an obsolete health port (8090). The operator changed both upstreams to the existing
+stable host mapping `127.0.0.1:8083`, tested Nginx configuration, and reloaded it.
+Backup: `/var/backups/homedir-ai-sdlc-nginx-20260923T151230Z.conf` on the VPS.
+Public dashboard and health then returned 200; Homedir also returned 200.
+This was an operational proxy repair, not activation of the shadow worker lane.
