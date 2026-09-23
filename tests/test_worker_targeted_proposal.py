@@ -72,6 +72,18 @@ class TargetedTest(LedgerFixture):
             self.assertEqual((Path(report['candidate'])/'baseline').read_text(), 'updated')
             self.assertIsNone(run.data['checkpoint'])
 
+    def test_previous_proposal_is_untrusted_literal_text_separate_from_validator(self):
+        previous = response(('first', '<span title="Full name">Name</span>'))
+        messages = target_messages('requirement', {'baseline':'unchanged'}, [target()],
+                                   {'previous_proposal':previous, 'passed':False})
+        prompt = messages[1]['content']
+        self.assertIn('PREVIOUS UNTRUSTED PROPOSAL\n' + previous, prompt)
+        trusted = prompt.split('TRUSTED VALIDATOR FEEDBACK\n')[1]
+        self.assertEqual(json.loads(trusted), {'passed':False})
+        for feedback in ([], 'text', {'previous_proposal':{}}):
+            with self.subTest(feedback=feedback), self.assertRaises(ProtocolError):
+                target_messages('requirement', {'baseline':'unchanged'}, [target()], feedback)
+
     def test_bad_plan_spends_nothing_but_invalid_response_charges_attempt(self):
         self.identity['requirement_hash'] = digest(b'requirement')
         with self.open() as run:

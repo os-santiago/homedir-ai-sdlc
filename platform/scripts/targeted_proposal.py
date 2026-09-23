@@ -95,7 +95,16 @@ Follow each target's intent. Independent validators decide acceptance.'''
                      f"FILE {target['path']}\nINTENT {target['intent']}\n"
                      f"BEGIN ORIGINAL TEXT\n{target['old']}\nEND ORIGINAL TEXT")
     if feedback is not None:
-        parts.append('TRUSTED VALIDATOR FEEDBACK\n' + json.dumps(feedback))
+        if not isinstance(feedback, dict):
+            raise ProtocolError('trusted feedback object required')
+        previous = feedback.get('previous_proposal')
+        if previous is not None:
+            if not isinstance(previous, str):
+                raise ProtocolError('previous proposal must be text')
+            parts.append('PREVIOUS UNTRUSTED PROPOSAL\n' + previous)
+        parts.append('TRUSTED VALIDATOR FEEDBACK\n' +
+                     json.dumps({key: value for key, value in feedback.items()
+                                 if key != 'previous_proposal'}))
     messages = [{'role':'system', 'content':instructions}, {'role':'user', 'content':'\n\n'.join(parts)}]
     if len(encoded(messages)) > 128 * 1024:
         raise ProtocolError('target prompt limit exceeded')
