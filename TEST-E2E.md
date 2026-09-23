@@ -6,8 +6,8 @@
 2. **GitHub CLI** (`gh`) instalado y autenticado
 3. Variables de entorno:
    ```powershell
-   $env:GH_TOKEN = "ghp_xxxxx"
-   $env:SC_API_KEY = "nvapi-xxxxx"  # Opcional para test de infra
+   $env:GH_TOKEN = "${GH_TOKEN}"
+   $env:SC_API_KEY = "${NVIDIA_API_KEY}"  # Opcional para test de infra
    ```
 
 ## Pasos para Ejecutar
@@ -107,7 +107,7 @@ gh run watch
 ### Error: GH_TOKEN not set
 
 ```powershell
-$env:GH_TOKEN = "ghp_your_token_here"
+$env:GH_TOKEN = "${GH_TOKEN}"
 ```
 
 O autenticar con:

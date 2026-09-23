@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import subprocess
+import tempfile
 import unittest
 
 
@@ -15,19 +16,51 @@ class DeploymentPreparationTest(unittest.TestCase):
         start = WORKFLOW.index('            # Validate runtime secrets')
         end = WORKFLOW.index('            # Prepare every replacement', start)
         guard = WORKFLOW[start:end]
-        for github, provider in [('', ''), ('test-github', ''), ('', 'test-provider'), ('test-github', 'test-provider')]:
-            with self.subTest(github=bool(github), provider=bool(provider)):
+        for github, provider, litellm in [('', '', ''), ('test-github', '', 'test-litellm'),
+                ('', 'test-provider', 'test-litellm'), ('test-github', 'test-provider', ''),
+                ('test-github', 'test-provider', 'test-litellm')]:
+            with self.subTest(github=bool(github), provider=bool(provider), litellm=bool(litellm)):
                 result = subprocess.run(['bash', '-c', 'set -eu\n' + guard + '\necho MUTATION'],
-                                        env={'PATH': '/usr/bin:/bin', 'GH_TOKEN': github, 'NVIDIA_API_KEY': provider},
+                                        env={'PATH': '/usr/bin:/bin', 'GH_TOKEN': github,
+                                             'NVIDIA_API_KEY': provider, 'LITELLM_API_KEY': litellm},
                                         text=True, capture_output=True)
-                self.assertEqual(result.returncode == 0, bool(github and provider))
-                self.assertEqual('MUTATION' in result.stdout, bool(github and provider))
+                self.assertEqual(result.returncode == 0, bool(github and provider and litellm))
+                self.assertEqual('MUTATION' in result.stdout, bool(github and provider and litellm))
                 self.assertNotIn('test-provider', result.stderr)
+                self.assertNotIn('test-litellm', result.stderr)
         self.assertLess(start, WORKFLOW.index('podman pod stop'))
         self.assertIn('NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}', WORKFLOW)
         forwarded = next(line for line in WORKFLOW.splitlines() if 'envs:' in line)
         self.assertIn('NVIDIA_API_KEY', forwarded)
         self.assertNotIn('OPENAI_API_KEY', forwarded)
+        self.assertIn('LITELLM_API_KEY', forwarded)
+
+    def test_implementation_runtime_key_is_required_and_injected_without_logging(self):
+        component = ROOT / 'future-go/components/implementation'
+        template = json.loads((component / 'config-litellm.json').read_text())
+        self.assertEqual(template['model']['apiKey'], '')
+        self.assertTrue(all(profile['apiKey'] == '' for profile in template['profiles'].values()))
+        for key in ('', 'test-only-runtime-value'):
+            with self.subTest(present=bool(key)), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                home = root / 'home'
+                (home / '.sc-agent').mkdir(parents=True)
+                config = home / '.sc-agent/config.json'
+                config.write_text(json.dumps(template))
+                service = root / 'implementation-service'
+                service.write_text('#!/bin/sh\necho STARTED\n')
+                service.chmod(0o700)
+                result = subprocess.run(['bash', '-c', (component / 'entrypoint.sh').read_text()],
+                    cwd=root, env={'PATH':'/usr/bin:/bin', 'HOME':str(home), 'LITELLM_API_KEY':key},
+                    text=True, capture_output=True)
+                self.assertEqual(result.returncode == 0, bool(key))
+                self.assertEqual('STARTED' in result.stdout, bool(key))
+                if key:
+                    self.assertNotIn(key, result.stdout + result.stderr)
+                    saved = json.loads(config.read_text())
+                    self.assertEqual(saved['model']['apiKey'], key)
+                    self.assertTrue(all(p['apiKey'] == key for p in saved['profiles'].values()))
+                    self.assertEqual(config.stat().st_mode & 0o077, 0)
 
     def test_image_configuration_has_no_credentials(self):
         config = json.loads((ROOT / 'container/sc-agent-config.json').read_text())

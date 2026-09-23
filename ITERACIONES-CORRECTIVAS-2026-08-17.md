@@ -276,7 +276,7 @@ done
 **Labels aplicados:** bug, priority:P2, scc-accepted, scc-failed
 
 **Corrección Aplicada:**
-- Agregado `NVIDIA_API_KEY=nvapi-9dhZ...` a `/root/homedir/container/config/production.local.env`
+- Agregado `NVIDIA_API_KEY=${NVIDIA_API_KEY}` a `/root/homedir/container/config/production.local.env`
 - Container recreado con nueva configuración
 
 ---
@@ -725,8 +725,8 @@ Código modificado:
 - worker.env: AUTO-GENERADO ✅
 
 **Secrets Configurados:**
-- GH_TOKEN: ghp_FuLp... (22:11:03 UTC)
-- NVIDIA_API_KEY: nvapi-9dhZ... (22:11:54 UTC)
+- GH_TOKEN: ${GH_TOKEN} (22:11:03 UTC)
+- NVIDIA_API_KEY: ${NVIDIA_API_KEY} (22:11:54 UTC)
 
 **Resultado:**
 - ✅ COMPLETADA
