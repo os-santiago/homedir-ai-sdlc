@@ -31,7 +31,7 @@ class WorktreeImplementationTest(unittest.TestCase):
             base = git("rev-parse", "HEAD")
             git("switch", "-c", "fix/fixture")
             binary = root / "agent"
-            binary.write_text('#!/bin/bash\nset -eu\nprintf "%s\\n" "$*" > "$PROMPT_CAPTURE"\n' + agent + "\n")
+            binary.write_text('#!/bin/bash\nset -eu\ncase " $* " in *" --help "*) exit 0;; esac\nprintf "%s\\n" "$*" > "$PROMPT_CAPTURE"\n' + agent + "\n")
             binary.chmod(0o700)
             env = dict(os.environ, WORKDIR=str(repo), SCC_BIN=str(binary), LOGFILE=str(root / "log"), PROMPT_CAPTURE=str(root / "prompt"))
             script = "\n".join([
