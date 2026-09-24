@@ -405,6 +405,10 @@ Repository execution contract:
 - Run relevant tests and report changed files and validation evidence."
   # The worker owns the checkout. The HTTP generator has no repository mutation
   # contract and must not be used as an implementation route.
+  if [[ -n "${RUN_SUMMARY_DIR:-}" ]]; then
+    export SCC_SUMMARY_FILE="${RUN_SUMMARY_DIR}/issue-${number}-scc.json"
+    export SCC_AUDIT_FILE="${RUN_SUMMARY_DIR}/issue-${number}-audit.jsonl"
+  fi
   if run_scc_checked "${prompt}" "${body}"; then
     :
   else
@@ -478,14 +482,44 @@ run_scc_prompt() {
     # See: Iteration #1 (config.json required) and Iteration #13 (removed flag)
     # Enable throttling to avoid API rate limits (auto-detects provider-specific delays)
     scc_args+=(--throttle auto)
-    scc_args+=(-yq "${prompt}")
 
+    # Capability detection: newer scc builds expose headless-automation flags.
+    # Probe once per process and degrade gracefully on older binaries.
+    if [[ -z "${SCC_CAPS:-}" ]]; then
+      SCC_CAPS="$("${SCC_BIN}" chat --help 2>/dev/null || true)"
+    fi
+    local prompt_file=""
+    if grep -q -- '--prompt-file' <<<"${SCC_CAPS}"; then
+      prompt_file="$(mktemp /tmp/homedir-sdlc-prompt-XXXXXX.txt)"
+      printf '%s' "${prompt}" > "${prompt_file}"
+      scc_args+=(-yq --prompt-file "${prompt_file}")
+    else
+      scc_args+=(-yq "${prompt}")
+    fi
+    # Worker owns git state — hard-block mutations inside the agent session.
+    grep -q -- '--no-commit' <<<"${SCC_CAPS}" && scc_args+=(--no-commit)
+    # Internal budget slightly under the outer SIGKILL so runs end gracefully
+    # with a manifest instead of a torn process.
+    if grep -q -- '--max-seconds' <<<"${SCC_CAPS}" \
+      && [[ "${dynamic_timeout}" =~ ^[0-9]+$ ]] && (( dynamic_timeout > 120 )); then
+      scc_args+=(--max-seconds "$((dynamic_timeout - 60))")
+    fi
+    if [[ -n "${SCC_SUMMARY_FILE:-}" ]] && grep -q -- '--summary-file' <<<"${SCC_CAPS}"; then
+      scc_args+=(--summary-file "${SCC_SUMMARY_FILE}")
+    fi
+    if [[ -n "${SCC_AUDIT_FILE:-}" ]] && grep -q -- '--audit-log' <<<"${SCC_CAPS}"; then
+      scc_args+=(--audit-log "${SCC_AUDIT_FILE}")
+    fi
+
+    local scc_status=0
     if command -v timeout >/dev/null 2>&1 && [[ "${dynamic_timeout}" =~ ^[0-9]+$ && "${dynamic_timeout}" -gt 0 ]]; then
-      timeout --kill-after=10s "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}"
+      timeout --kill-after=10s "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}" || scc_status=$?
     else
       log "WARNING: 'timeout' unavailable or dynamic_timeout invalid (${dynamic_timeout}); running SCC without timeout enforcement"
-      "${SCC_BIN}" "${scc_args[@]}"
+      "${SCC_BIN}" "${scc_args[@]}" || scc_status=$?
     fi
+    [[ -n "${prompt_file}" ]] && rm -f "${prompt_file}"
+    return "${scc_status}"
   ) 2>&1 | tee -a "${LOGFILE}"
   return "${PIPESTATUS[0]}"
 }
@@ -780,6 +814,8 @@ mark_failed() {
     # Fallback to simple comment
     comment_issue "${issue}" "Autonomous SDLC failed: ${reason}"
   fi
+
+  publish_issue_run_summary "${issue}" "${reason}"
 
   alert FAIL "Issue #${issue} failed" "${reason}"
 }
@@ -1547,6 +1583,74 @@ append_run_summary() {
     }' >> "${file}"
 }
 
+# --- Run summary publication (issue #103) ------------------------------------
+# The on-disk JSON (scc --summary-file manifest + lifecycle JSONL) is the single
+# source; comments are a bounded rendering of it, scrubbed before publishing.
+
+scrub_secrets() {
+  sed -E \
+    -e 's/(sk|pk|nvapi|ghp|gho|ghu|ghs|ghr|AKIA|xox[baprs])-[A-Za-z0-9_-]{8,}/\1-[REDACTED]/g' \
+    -e 's/github_pat_[A-Za-z0-9_]{8,}/github_pat_[REDACTED]/g' \
+    -e 's/(Bearer|api[_-]?key|token|password|secret)([=:"'"'"' ]+)[A-Za-z0-9._~+\/-]{8,}/\1\2[REDACTED]/gi'
+}
+
+render_run_summary_markdown() {
+  local issue="$1" validation_summary="${2:-}" files_changed="${3:-}"
+  local manifest="${RUN_SUMMARY_DIR:-}/issue-${issue}-scc.json"
+  local lifecycle="${RUN_SUMMARY_DIR:-}/issue-${issue}.jsonl"
+
+  {
+    echo "### Autonomous run summary — issue #${issue}"
+    echo
+    if [[ -f "${manifest}" ]]; then
+      jq -r '
+        "- **Model**: \(.model // "unknown")",
+        "- **Result**: \(.exit_reason // "unknown")\(if .success == true then "" else " (unsuccessful)" end)",
+        "- **Duration**: \(((.duration_ms // 0) / 1000) | floor)s",
+        "- **Iterations**: \(.iterations // 0)",
+        "- **Tool calls**: \(.tool_calls_total // 0)\(if ((.tool_calls // {}) | length) > 0 then " (" + ([.tool_calls | to_entries[] | "\(.key)x\(.value)"] | join(", ")) + ")" else "" end)",
+        "- **Tokens**: \(.tokens_in // 0) in / \(.tokens_out // 0) out",
+        "- **Estimated cost**: $\(.estimated_cost_usd // 0)"' "${manifest}" 2>/dev/null \
+        || echo "- Manifest present but unreadable."
+    else
+      echo "- No scc manifest captured for this run (older scc or early failure)."
+    fi
+    [[ -n "${validation_summary}" ]] && echo "- **Validation**: ${validation_summary}"
+    if [[ -n "${files_changed}" ]]; then
+      echo; echo "**Files changed**:"; echo '```'; echo "${files_changed}"; echo '```'
+    fi
+    if [[ -f "${lifecycle}" ]]; then
+      echo; echo "**Lifecycle events**:"
+      jq -r '"- `\(.created_at)` — `\(.event)`\(if .summary != "" then ": " + .summary else "" end)"' "${lifecycle}" 2>/dev/null | tail -n 10
+    fi
+  } | head -c 3000
+}
+
+publish_pr_run_summary() {
+  local issue="$1" pr_number="$2" validation_summary="${3:-}"
+  local files_changed=""
+  if [[ -d "${WORKDIR}/.git" ]]; then
+    files_changed="$(git -C "${WORKDIR}" diff --stat "origin/main...HEAD" 2>/dev/null | tail -n 15 || true)"
+  fi
+  local body
+  body="$(render_run_summary_markdown "${issue}" "${validation_summary}" "${files_changed}" | scrub_secrets)"
+  if gh pr comment "${pr_number}" --repo "${REPO}" --body "${body}" >/dev/null 2>&1; then
+    log "published run summary comment on PR #${pr_number}"
+  else
+    log "WARN: could not publish run summary on PR #${pr_number}"
+  fi
+}
+
+publish_issue_run_summary() {
+  local issue="$1" reason="${2:-}"
+  local body
+  body="$(render_run_summary_markdown "${issue}" "" "" | scrub_secrets)"
+  [[ -z "${body//[[:space:]]/}" ]] && return 0
+  comment_issue "${issue}" "${body}
+
+**Failure reason**: ${reason}"
+}
+
 now_epoch() {
   date -u +%s
 }
@@ -2114,6 +2218,10 @@ run_scc_on_existing_pr() {
   git -C "${WORKDIR}" checkout -B "${branch}" "origin/${branch}"
 
   prompt="$(build_remediation_prompt "${issue}" "${title}" "${branch}" "${pr_url}" "${checks_json}" "${reviews_json}" "${trigger}" "${pr_number}")"
+  if [[ -n "${RUN_SUMMARY_DIR:-}" ]]; then
+    export SCC_SUMMARY_FILE="${RUN_SUMMARY_DIR}/issue-${issue}-remediation-scc.json"
+    export SCC_AUDIT_FILE="${RUN_SUMMARY_DIR}/issue-${issue}-remediation-audit.jsonl"
+  fi
   if run_scc_with_timeout_handling "${prompt}"; then
     :
   else
@@ -3066,6 +3174,7 @@ Recommendation: Review the issue description for clarity, check SCC logs, or ver
   write_issue_state "${number}" "${branch}" "${pr_url}"
   pr_number="$(sed -nE 's#.*/pull/([0-9]+).*#\1#p' <<<"${pr_url}" | head -n1)"
   append_run_summary "${number}" "pr-opened" "${pr_number}" "${branch}" "SCC opened or updated ${pr_url}. Validation: ${validation_summary}"
+  publish_pr_run_summary "${number}" "${pr_number}" "${validation_summary}"
   comment_issue "${number}" "Autonomous SDLC opened PR: ${pr_url}"
   comment_issue "${number}" "Autonomous SDLC is waiting for checks and review on ${pr_url}. Auto-merge will only be enabled after the worker marks the PR as \`${APPROVED_LABEL}\`; repository rules still apply."
   write_heartbeat "ok" "opened PR for issue #${number}"
