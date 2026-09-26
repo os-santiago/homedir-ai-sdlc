@@ -14,7 +14,7 @@ func main() {
 
 	// Configuration
 	port := getEnv("PORT", "8082")
-	scProfile := getEnv("SC_PROFILE", "qwen3.6")
+	scProfile := getEnv("SC_PROFILE", "nvidia")
 	maxIter := getEnv("MAX_IMPLEMENTATION_ITERATIONS", "3")
 	threshold := getEnv("QUALITY_THRESHOLD", "8.0")
 

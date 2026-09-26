@@ -18,7 +18,7 @@ docker-build:
 
 docker-run:
 	podman run --rm -p 8082:8082 \
-		-e SC_PROFILE=qwen3.6 \
+		-e SC_PROFILE=nvidia -e NVIDIA_API_KEY \
 		-e QUALITY_THRESHOLD=8.0 \
 		-e MAX_IMPLEMENTATION_ITERATIONS=3 \
 		-v ~/.config/sc-agent:/root/.config/sc-agent:ro \
