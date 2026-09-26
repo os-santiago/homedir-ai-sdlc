@@ -2,37 +2,24 @@
 set -euo pipefail
 umask 077
 
-# Copy sc-agent config to user home if not exists
-# This ensures config is available regardless of which user runs the container
-if [ ! -d "${HOME}/.sc-agent" ]; then
-    mkdir -p "${HOME}/.sc-agent"
-    cp -r /.sc-agent/config.json "${HOME}/.sc-agent/"
+: "${NVIDIA_API_KEY:?NVIDIA_API_KEY must be supplied at runtime}"
+export SC_PROFILE="${SC_PROFILE:-nvidia}"
+if [ "$SC_PROFILE" != nvidia ]; then
+    echo "Implementation service requires the nvidia profile" >&2
+    exit 1
 fi
-
-# Inject API key from environment based on active profile
-ACTIVE_PROFILE=$(jq -r '.activeProfile' "${HOME}/.sc-agent/config.json")
-
-if [ "$ACTIVE_PROFILE" = "litellm" ]; then
-    : "${LITELLM_API_KEY:?LITELLM_API_KEY must be supplied at runtime}"
-    # Read the secret from the environment, never from a process argument.
-    jq '.model.apiKey = env.LITELLM_API_KEY |
-        .profiles.litellm.apiKey = env.LITELLM_API_KEY |
-        .profiles."litellm-fast".apiKey = env.LITELLM_API_KEY' \
-       "${HOME}/.sc-agent/config.json" > "${HOME}/.sc-agent/config.json.tmp"
-    mv "${HOME}/.sc-agent/config.json.tmp" "${HOME}/.sc-agent/config.json"
-elif [ "$ACTIVE_PROFILE" = "openai" ] && [ -n "${OPENAI_API_KEY:-}" ]; then
-    echo "Configuring OpenAI API key from environment..."
-    jq --arg key "$OPENAI_API_KEY" \
-       '.profiles.openai.apiKey = $key | .profiles."openai-fast".apiKey = $key' \
-       "${HOME}/.sc-agent/config.json" > "${HOME}/.sc-agent/config.json.tmp" && \
-       mv "${HOME}/.sc-agent/config.json.tmp" "${HOME}/.sc-agent/config.json"
-elif [ "$ACTIVE_PROFILE" = "nvidia" ] && [ -n "${NVIDIA_API_KEY:-}" ]; then
-    echo "Configuring NVIDIA API key from environment..."
-    jq --arg key "$NVIDIA_API_KEY" \
-       '.profiles.nvidia.apiKey = $key | .profiles."nvidia-fast".apiKey = $key' \
-       "${HOME}/.sc-agent/config.json" > "${HOME}/.sc-agent/config.json.tmp" && \
-       mv "${HOME}/.sc-agent/config.json.tmp" "${HOME}/.sc-agent/config.json"
+mkdir -p "${HOME}/.sc-agent"
+if [ ! -f "${HOME}/.sc-agent/config.json" ]; then
+    cp /.sc-agent/config.json "${HOME}/.sc-agent/config.json"
 fi
-
-# Execute the implementation service
+# Reject stale profiles instead of sending credentials to another provider.
+jq -e '.activeProfile == "nvidia" and
+    .model.baseUrl == "https://integrate.api.nvidia.com/v1" and
+    .profiles.nvidia.baseUrl == "https://integrate.api.nvidia.com/v1"' \
+    "${HOME}/.sc-agent/config.json" >/dev/null
+# Keep credentials out of argv and image layers; refresh the private runtime copy.
+jq '.model.apiKey = env.NVIDIA_API_KEY |
+    .profiles.nvidia.apiKey = env.NVIDIA_API_KEY' \
+    "${HOME}/.sc-agent/config.json" > "${HOME}/.sc-agent/config.json.tmp"
+mv "${HOME}/.sc-agent/config.json.tmp" "${HOME}/.sc-agent/config.json"
 exec ./implementation-service
