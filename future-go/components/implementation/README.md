@@ -33,7 +33,7 @@ Issue → SCC Generate (1 attempt) → PR → CI
 Issue → Implementation Service
   ↓
   Loop (max 3 iterations):
-    1. Generate Code (sc-agent-cli with qwen3.6)
+    1. Generate Code (sc-agent-cli with the shared NVIDIA profile)
     2. Quality Check (AI-powered review)
     3. If score ≥ 8/10 → Accept
     4. If score < 8 → Re-prompt with feedback
@@ -55,7 +55,7 @@ Issue → Implementation Service
 - Executes sc-agent-cli via shell
 - Generation mode: Code creation from issue
 - Review mode: Quality assessment of generated code
-- Uses qwen3.6 model (faster response times)
+- Uses the worker's shared NVIDIA model configuration
 
 **3. Quality Scorer** (`internal/quality/scorer.go`)
 - Parses AI review into structured score
@@ -372,7 +372,7 @@ Log format:
 ✅ **Better AI Utilization**: Feedback maximizes model potential  
 ✅ **Reduced Human Escalation**: Auto-fix quality issues before PR  
 ✅ **Measurable Improvement**: Track quality scores over time  
-✅ **Fast Iteration**: qwen3.6 has better response times than previous models  
+✅ **Shared Provider**: Worker and implementation use the same NVIDIA configuration  
 
 ## Comparison
 
