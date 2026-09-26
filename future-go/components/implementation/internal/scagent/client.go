@@ -22,7 +22,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		BinaryPath: getEnv("SC_AGENT_PATH", "scc"),
-		Profile:    getEnv("SC_PROFILE", "qwen3.6"),
+		Profile:    getEnv("SC_PROFILE", "nvidia"),
 		MaxIter:    50, // Allow agent loops within generation
 	}
 }
