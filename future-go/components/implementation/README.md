@@ -33,7 +33,7 @@ Issue → SCC Generate (1 attempt) → PR → CI
 Issue → Implementation Service
   ↓
   Loop (max 3 iterations):
-    1. Generate Code (sc-agent-cli with qwen3.6)
+    1. Generate Code (sc-agent-cli with the shared NVIDIA profile)
     2. Quality Check (AI-powered review)
     3. If score ≥ 8/10 → Accept
     4. If score < 8 → Re-prompt with feedback
@@ -55,7 +55,7 @@ Issue → Implementation Service
 - Executes sc-agent-cli via shell
 - Generation mode: Code creation from issue
 - Review mode: Quality assessment of generated code
-- Uses qwen3.6 model (faster response times)
+- Uses the worker's shared NVIDIA model configuration
 
 **3. Quality Scorer** (`internal/quality/scorer.go`)
 - Parses AI review into structured score
@@ -165,19 +165,17 @@ Check generation status (for async implementations).
 | `MAX_IMPLEMENTATION_ITERATIONS` | `3` | Maximum generation attempts |
 | `QUALITY_THRESHOLD` | `8.0` | Minimum score to accept (0-10) |
 | `SC_AGENT_PATH` | `scc` | Path to sc-agent-cli binary |
-| `SC_PROFILE` | `qwen3.6` | sc-agent-cli profile to use |
+| `SC_PROFILE` | `nvidia` | Shared worker/implementation profile |
+| `NVIDIA_API_KEY` | required | Runtime credential, never baked into the image |
 | `PORT` | `8082` | HTTP server port |
 
 **sc-agent-cli Profile:**
 
-Required profile in `~/.config/sc-agent/profiles.json`:
-```json
-{
-  "name": "qwen3.6",
-  "baseUrl": "http://localhost:11434/v1",
-  "model": "qwen3.6:latest"
-}
-```
+The image uses the same credential-free `container/sc-agent-config.json` as the
+worker (NVIDIA endpoint, `poolside/laguna-xs-2.1`, non-streaming). The entrypoint
+injects `NVIDIA_API_KEY` into a private `~/.sc-agent/config.json` and rejects stale
+profiles/endpoints. No LiteLLM key is required. Supply the key through your secret
+manager or an exported environment variable; do not put its value in commands.
 
 ## Quality Scoring
 
@@ -291,7 +289,7 @@ go build -o implementation-service ./cmd
 which scc || echo "Install sc-agent-cli first"
 
 # Start service
-export SC_PROFILE=qwen3.6
+export SC_PROFILE=nvidia
 export QUALITY_THRESHOLD=8.0
 export MAX_IMPLEMENTATION_ITERATIONS=3
 ./implementation-service
@@ -301,10 +299,9 @@ export MAX_IMPLEMENTATION_ITERATIONS=3
 ### Docker
 
 ```bash
-podman build -t ai-sdlc-implementation:latest .
+podman build -f future-go/components/implementation/Containerfile -t ai-sdlc-implementation:latest .
 podman run -p 8082:8082 \
-  -e SC_PROFILE=qwen3.6 \
-  -v ~/.config/sc-agent:/root/.config/sc-agent:ro \
+  -e SC_PROFILE=nvidia -e NVIDIA_API_KEY \
   ai-sdlc-implementation:latest
 ```
 
@@ -319,8 +316,7 @@ go test ./internal/...
 ### Integration Test
 
 ```bash
-# Start sc-agent-cli provider (Ollama with qwen3.6)
-ollama run qwen3.6
+# Start the configured NVIDIA implementation container above first.
 
 # Test generation
 curl -X POST http://localhost:8082/api/implementation/generate \
@@ -376,7 +372,7 @@ Log format:
 ✅ **Better AI Utilization**: Feedback maximizes model potential  
 ✅ **Reduced Human Escalation**: Auto-fix quality issues before PR  
 ✅ **Measurable Improvement**: Track quality scores over time  
-✅ **Fast Iteration**: qwen3.6 has better response times than previous models  
+✅ **Shared Provider**: Worker and implementation use the same NVIDIA configuration  
 
 ## Comparison
 

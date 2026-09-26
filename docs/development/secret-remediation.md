@@ -1,5 +1,21 @@
 # Credential remediation and deployment prerequisite
 
+## Current provider configuration
+
+Worker and implementation now share `container/sc-agent-config.json` and the
+`nvidia` profile. Both use `NVIDIA_API_KEY`; `LITELLM_API_KEY` is no longer required
+by production deployment. The implementation writes its credential only into its
+private runtime configuration and rejects stale provider endpoints or profiles.
+The historical LiteLLM key still needs revocation; provider unification does not
+invalidate leaked credentials. The procedure below records the earlier #105
+rollout and its original prerequisite, superseded by this configuration change.
+
+For deployment, update the existing `NVIDIA_API_KEY` secret with a valid replacement
+if needed, merge the reviewed configuration PR, and verify the deployed revision
+and provider access. Do not provision a LiteLLM key for this route.
+
+## Historical #105 remediation procedure
+
 Tracking incident: #98. Repository cleanup does not revoke a credential and does
 not remove it from historical commits, published images, logs or existing clones.
 The September 23 cleanup removes full values, prefixes and credential-shaped
