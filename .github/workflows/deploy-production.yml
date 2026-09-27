@@ -268,7 +268,7 @@ jobs:
               'HOMEDIR_SDLC_GIT_USER_NAME=homedir-sdlc[bot]' \
               'HOMEDIR_SDLC_GIT_USER_EMAIL=homedir-sdlc@users.noreply.github.com' \
               'SCC_BIN=scc' \
-              'SCC_TIMEOUT_SECONDS=600' \
+              'HOMEDIR_SDLC_SCC_TIMEOUT_SECONDS=600' \
               'SCC_CLEAR_HISTORY=true' \
               'HOMEDIR_SDLC_INTERVAL=180' \
               'HOMEDIR_SDLC_ENABLE_AUTOMERGE=true' \
