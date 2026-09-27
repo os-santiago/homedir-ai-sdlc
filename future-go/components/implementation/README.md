@@ -172,7 +172,7 @@ Check generation status (for async implementations).
 **sc-agent-cli Profile:**
 
 The image uses the same credential-free `container/sc-agent-config.json` as the
-worker (NVIDIA endpoint, `poolside/laguna-xs-2.1`, non-streaming). The entrypoint
+worker (NVIDIA endpoint, `z-ai/glm-5.3-flash`, non-streaming). The entrypoint
 injects `NVIDIA_API_KEY` into a private `~/.sc-agent/config.json` and rejects stale
 profiles/endpoints. No LiteLLM key is required. Supply the key through your secret
 manager or an exported environment variable; do not put its value in commands.
