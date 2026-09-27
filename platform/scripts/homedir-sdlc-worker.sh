@@ -102,7 +102,7 @@ VALIDATION_COMMAND="${HOMEDIR_SDLC_VALIDATION_COMMAND:-}"
 GIT_USER_NAME="${HOMEDIR_SDLC_GIT_USER_NAME:-homedir-sdlc[bot]}"
 GIT_USER_EMAIL="${HOMEDIR_SDLC_GIT_USER_EMAIL:-homedir-sdlc@users.noreply.github.com}"
 SCC_BIN="${SCC_BIN:-/usr/local/bin/scc}"
-SCC_TIMEOUT_SECONDS="${HOMEDIR_SDLC_SCC_TIMEOUT_SECONDS:-1800}"
+SCC_TIMEOUT_SECONDS="${HOMEDIR_SDLC_SCC_TIMEOUT_SECONDS:-${SCC_TIMEOUT_SECONDS:-1800}}"
 SCC_PROFILE="${HOMEDIR_SDLC_SCC_PROFILE:-nvidia}"
 SCC_CLEAR_HISTORY="${HOMEDIR_SDLC_SCC_CLEAR_HISTORY:-true}"
 SCC_PERMISSIONS="${HOMEDIR_SDLC_SCC_PERMISSIONS:-unlimited}"
@@ -462,6 +462,16 @@ run_scc_prompt() {
   fi
 
   # Export timeout for error reporting (used by run_scc_handle_exit_code)
+  if ! command -v timeout >/dev/null 2>&1 \
+    || [[ ! "${SCC_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "${dynamic_timeout}" =~ ^[1-9][0-9]*$ ]]; then
+    log "Refusing SCC execution without a valid, enforceable timeout"
+    return 1
+  fi
+  if (( SCC_TIMEOUT_SECONDS < dynamic_timeout )); then
+    dynamic_timeout=${SCC_TIMEOUT_SECONDS}
+  fi
+  local IMPLEMENTATION_DEADLINE="${IMPLEMENTATION_DEADLINE:-$((SECONDS + dynamic_timeout))}"
   if [[ -n "${IMPLEMENTATION_DEADLINE:-}" ]]; then
     dynamic_timeout=$(remaining_implementation_seconds) || return 124
   fi
@@ -484,10 +494,20 @@ run_scc_prompt() {
     scc_args+=(--throttle auto)
 
     # Capability detection: newer scc builds expose headless-automation flags.
-    # Probe once per process and degrade gracefully on older binaries.
+    # Charge discovery to the same deadline as generation. Older binaries may
+    # lack these flags, but an unresponsive help command must not block a worker.
     if [[ -z "${SCC_CAPS:-}" ]]; then
-      SCC_CAPS="$("${SCC_BIN}" chat --help 2>/dev/null || true)"
+      local probe_timeout probe_status=0
+      probe_timeout=$(remaining_implementation_seconds) || return 124
+      (( probe_timeout > 10 )) && probe_timeout=10
+      SCC_CAPS="$(timeout --kill-after=1s "${probe_timeout}s" "${SCC_BIN}" chat --help 2>/dev/null)" || probe_status=$?
+      if [[ "${probe_status}" == 124 || "${probe_status}" == 137 ]]; then
+        log "SCC capability discovery timed out; refusing to launch generation"
+        return 124
+      fi
+      if (( probe_status != 0 )); then SCC_CAPS=""; fi
     fi
+    dynamic_timeout=$(remaining_implementation_seconds) || return 124
     local prompt_file=""
     if grep -q -- '--prompt-file' <<<"${SCC_CAPS}"; then
       prompt_file="$(mktemp /tmp/homedir-sdlc-prompt-XXXXXX.txt)"
@@ -515,8 +535,8 @@ run_scc_prompt() {
     if command -v timeout >/dev/null 2>&1 && [[ "${dynamic_timeout}" =~ ^[0-9]+$ && "${dynamic_timeout}" -gt 0 ]]; then
       timeout --kill-after=10s "${dynamic_timeout}s" "${SCC_BIN}" "${scc_args[@]}" || scc_status=$?
     else
-      log "WARNING: 'timeout' unavailable or dynamic_timeout invalid (${dynamic_timeout}); running SCC without timeout enforcement"
-      "${SCC_BIN}" "${scc_args[@]}" || scc_status=$?
+      log "Refusing SCC execution without timeout enforcement"
+      scc_status=1
     fi
     [[ -n "${prompt_file}" ]] && rm -f "${prompt_file}"
     return "${scc_status}"
@@ -3116,7 +3136,7 @@ EOF
       local issue_complexity
       issue_complexity=$(classify_issue_complexity "${body}")
       local actual_timeout
-      actual_timeout=$(get_timeout_for_complexity "${issue_complexity}")
+      actual_timeout="${SCC_ACTUAL_TIMEOUT:-$(get_timeout_for_complexity "${issue_complexity}")}"
       mark_failed "${number}" "SCC timed out after ${actual_timeout}s (complexity: ${issue_complexity}). Check ${LOGFILE} on the runner."
       return 0
     fi

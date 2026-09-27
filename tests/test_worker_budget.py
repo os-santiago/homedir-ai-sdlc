@@ -15,7 +15,7 @@ def function(name):
 
 
 class WorktreeImplementationTest(unittest.TestCase):
-    def run_case(self, agent, validation="test -f change.txt", budget=5, cap=5):
+    def run_case(self, agent, validation="test -f change.txt", budget=5, cap=5, help_command="exit 0"):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             repo = root / "repo"
@@ -31,7 +31,7 @@ class WorktreeImplementationTest(unittest.TestCase):
             base = git("rev-parse", "HEAD")
             git("switch", "-c", "fix/fixture")
             binary = root / "agent"
-            binary.write_text('#!/bin/bash\nset -eu\ncase " $* " in *" --help "*) exit 0;; esac\nprintf "%s\\n" "$*" > "$PROMPT_CAPTURE"\n' + agent + "\n")
+            binary.write_text('#!/bin/bash\nset -eu\ncase " $* " in *" --help "*) ' + help_command + ';; esac\nprintf "%s\\n" "$*" > "$PROMPT_CAPTURE"\n' + agent + "\n")
             binary.chmod(0o700)
             env = dict(os.environ, WORKDIR=str(repo), SCC_BIN=str(binary), LOGFILE=str(root / "log"), PROMPT_CAPTURE=str(root / "prompt"))
             script = "\n".join([
@@ -46,9 +46,12 @@ class WorktreeImplementationTest(unittest.TestCase):
                 'if run_initial_implementation 63 body prompt; then exit 0; else exit $?; fi',
             ])
             result = subprocess.run(["bash", "-c", script], env=env, text=True, capture_output=True, timeout=12)
-            prompt = (root / "prompt").read_text()
-            self.assertIn(base, prompt)
-            self.assertIn("AGENTS.md", prompt)
+            if (root / "prompt").exists():
+                prompt = (root / "prompt").read_text()
+                self.assertIn(base, prompt)
+                self.assertIn("AGENTS.md", prompt)
+            else:
+                self.assertNotEqual(result.returncode, 0)
             self.assertNotIn("forbidden-http-route", result.stdout)
             return result
 
@@ -57,6 +60,54 @@ class WorktreeImplementationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("changed_files=change.txt", result.stdout)
         self.assertIn("Scoped validation passed", result.stdout)
+
+    def test_unresponsive_help_is_bounded_without_launching_agent(self):
+        result = self.run_case("echo unexpected-generation; echo fixed > change.txt", cap=1,
+                               help_command="sleep 4; exit 0")
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("capability discovery timed out", result.stdout)
+        self.assertNotIn("unexpected-generation", result.stdout)
+
+    def test_help_time_is_charged_to_generation_deadline(self):
+        result = self.run_case("sleep 2; echo fixed > change.txt", cap=3,
+                               help_command="sleep 2; exit 0")
+        self.assertEqual(result.returncode, 124, result.stderr)
+
+    def test_old_cli_without_help_still_executes(self):
+        result = self.run_case("echo fixed > change.txt", help_command="exit 2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_invalid_cap_refuses_execution(self):
+        result = self.run_case("echo unexpected-generation", cap="invalid")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("unexpected-generation", result.stdout)
+
+    def test_timeout_environment_precedence(self):
+        assignment = next(line for line in SOURCE.splitlines() if line.startswith('SCC_TIMEOUT_SECONDS='))
+        for setup, expected in (("", "1800"), ("SCC_TIMEOUT_SECONDS=600", "600"),
+                                ("SCC_TIMEOUT_SECONDS=600; HOMEDIR_SDLC_SCC_TIMEOUT_SECONDS=300", "300")):
+            result = subprocess.run(["bash", "-c", 'unset SCC_TIMEOUT_SECONDS HOMEDIR_SDLC_SCC_TIMEOUT_SECONDS\n'
+                                     + setup + '\n' + assignment + '\nprintf %s "$SCC_TIMEOUT_SECONDS"'],
+                                    capture_output=True, text=True, check=True)
+            self.assertEqual(result.stdout, expected)
+
+    def test_remediation_generation_obeys_cap_without_initial_wrapper(self):
+        with tempfile.TemporaryDirectory() as temp:
+            binary = Path(temp) / "agent"
+            binary.write_text('#!/bin/bash\ncase " $* " in *" --help "*) exit 0;; esac\nsleep 4\n')
+            binary.chmod(0o700)
+            env = dict(os.environ, WORKDIR=temp, SCC_BIN=str(binary), LOGFILE=str(Path(temp) / "log"))
+            script = "\n".join([
+                "set -euo pipefail",
+                "SCC_TIMEOUT_SECONDS=1; SCC_PROFILE=fixture; SCC_CLEAR_HISTORY=true",
+                "log() { :; }",
+                "classify_issue_complexity() { echo complex; }",
+                "get_timeout_for_complexity() { echo 100; }",
+                function("remaining_implementation_seconds"), function("run_scc_prompt"),
+                'run_scc_prompt prompt body',
+            ])
+            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 124, result.stderr)
 
     def test_agent_committed_changes_are_also_validated(self):
         result = self.run_case("echo fixed > change.txt; git add change.txt; git commit -m fix")
