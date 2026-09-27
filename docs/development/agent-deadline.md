@@ -17,8 +17,14 @@ discovery, ten seconds for generation. These are cleanup allowances, not renewed
 generation budgets.
 
 This is an execution-boundary fix, not durable retry or end-to-end qualification.
-The separately configured global validation command remains outside this agent
-deadline. Human approval, CI and deployment gates remain required. No live model
+The optional global validation command has its own positive integer deadline,
+`HOMEDIR_SDLC_VALIDATION_TIMEOUT_SECONDS` (default 600 seconds), for both initial
+implementation and remediation. Timeout, nonzero exit or invalid configuration
+blocks publication and records validation failure. A ten-second termination grace
+period follows its deadline. An unset validation command still delegates to CI;
+this does not claim local validation succeeded. This budget is separate from the
+agent deadline and is not a durable lifetime budget across attempts.
+Human approval, CI and deployment gates remain required. No live model
 implementation is claimed by the offline regression suite.
 
 Validation:

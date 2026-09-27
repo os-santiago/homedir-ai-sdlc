@@ -99,6 +99,7 @@ MAX_ISSUES="${HOMEDIR_SDLC_MAX_ISSUES_PER_RUN:-1}"
 ENABLE_AUTOMERGE="${HOMEDIR_SDLC_ENABLE_AUTOMERGE:-false}"
 PR_REVIEW_DELAY_SECONDS="${HOMEDIR_SDLC_PR_REVIEW_DELAY_SECONDS:-600}"
 VALIDATION_COMMAND="${HOMEDIR_SDLC_VALIDATION_COMMAND:-}"
+VALIDATION_TIMEOUT_SECONDS="${HOMEDIR_SDLC_VALIDATION_TIMEOUT_SECONDS:-600}"
 GIT_USER_NAME="${HOMEDIR_SDLC_GIT_USER_NAME:-homedir-sdlc[bot]}"
 GIT_USER_EMAIL="${HOMEDIR_SDLC_GIT_USER_EMAIL:-homedir-sdlc@users.noreply.github.com}"
 SCC_BIN="${SCC_BIN:-/usr/local/bin/scc}"
@@ -368,6 +369,28 @@ require_cmd() {
 # Execute against the worker-owned checkout with verifiable repository evidence.
 
 
+
+run_global_validation() {
+  local issue="$1" rc
+  if [[ -z "${VALIDATION_COMMAND}" ]]; then return 0; fi
+  if [[ ! "${VALIDATION_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] \
+    || ! command -v timeout >/dev/null 2>&1; then
+    mark_failed "${issue}" "Validation command failed: invalid timeout configuration or missing timeout utility."
+    return 1
+  fi
+  log "Running global validation with a ${VALIDATION_TIMEOUT_SECONDS}s deadline"
+  if (cd "${WORKDIR}" && timeout --kill-after=10s "${VALIDATION_TIMEOUT_SECONDS}s" bash -lc "${VALIDATION_COMMAND}"); then
+    return 0
+  else
+    rc=$?
+  fi
+  if [[ "${rc}" == 124 || "${rc}" == 137 ]]; then
+    mark_failed "${issue}" "Validation command failed: deadline exhausted after ${VALIDATION_TIMEOUT_SECONDS}s."
+  else
+    mark_failed "${issue}" "Validation command failed (exit ${rc})."
+  fi
+  return "${rc}"
+}
 
 remaining_implementation_seconds() {
   local remaining=$((IMPLEMENTATION_DEADLINE - SECONDS))
@@ -2282,10 +2305,9 @@ run_scc_on_existing_pr() {
   validation_summary="Worker validation command not configured; GitHub checks are required before approval."
   if [[ -n "${VALIDATION_COMMAND}" ]]; then
     log "running validation for issue #${issue} remediation: ${VALIDATION_COMMAND}"
-    if (cd "${WORKDIR}" && bash -lc "${VALIDATION_COMMAND}"); then
+    if run_global_validation "${issue}"; then
       validation_summary="\`${VALIDATION_COMMAND}\` passed"
     else
-      mark_failed "${issue}" "Validation command failed during remediation: \`${VALIDATION_COMMAND}\`."
       return 0
     fi
   fi
@@ -3169,10 +3191,9 @@ Recommendation: Review the issue description for clarity, check SCC logs, or ver
   validation_summary="Worker validation command not configured; GitHub checks are required before approval."
   if [[ -n "${VALIDATION_COMMAND}" ]]; then
     log "running validation for issue #${number}: ${VALIDATION_COMMAND}"
-    if (cd "${WORKDIR}" && bash -lc "${VALIDATION_COMMAND}"); then
+    if run_global_validation "${number}"; then
       validation_summary="\`${VALIDATION_COMMAND}\` passed"
     else
-      mark_failed "${number}" "Validation command failed: \`${VALIDATION_COMMAND}\`."
       return 0
     fi
   fi
